@@ -1,0 +1,231 @@
+<mujoco model="miniq">
+  <compiler angle="radian"/>
+  <option timestep="0.005" integrator="implicitfast"/>
+
+  <default>
+    <default class="visual_mesh">
+      <geom type="mesh" contype="0" conaffinity="0"/>
+    </default>
+
+    <default class="hip_joint">
+      <joint range="-3217 3217" actuatorfrcrange="-0.228 0.228" damping="0.003" armature="8.524353311905279e-05" frictionloss="0.0046"/>
+    </default>
+
+    <default class="knee_motor_joint">
+      <joint range="-3217 3217" actuatorfrcrange="-0.228 0.228" damping="0.003" armature="3.1688e-05" frictionloss="0.004561195413575008"/>
+    </default>
+
+    <default class="knee_hinge_bearing">
+      <joint range="-3217 3217" damping="0.0001" armature="0.000001" frictionloss="0.0001"/>
+    </default>
+
+    <default class="hip_position_ctrl">
+      <position kp="0.11" ctrllimited="true" ctrlrange="-3.14 3.14" forcelimited="true" forcerange="-0.228 0.228"/>
+    </default>
+
+    <default class="knee_position_ctrl">
+      <position kp="0.143" timeconst="0.02" ctrllimited="true" ctrlrange="-3.14 3.14" forcelimited="true" forcerange="-0.228 0.228"/>
+    </default>
+  </default>
+
+  <default>
+    <default class="body_contact">
+      <geom type="box" size="0.067 0.03 0.012" pos="0 0 0.01" group="0" rgba="1 0 0 0.3" friction="0.8 0.1 0.1" contype="2" conaffinity="1"/>
+    </default>
+
+    <default class="right_upper_leg_contact">
+      <geom type="capsule" size="0.006 0.012" pos="0 -0.015 0.012" euler="1.5708 0 0" group="0" rgba="1 0 0 0.3" friction="0.8 0.1 0.1" contype="2" conaffinity="1"/>
+    </default>
+
+    <default class="right_lower_leg_contact">
+      <geom type="capsule" size="0.003 0.015" pos="0 -0.02 0.0" euler="1.5708 0 0" group="0" rgba="1 0 0 0.3" friction="0.8 0.1 0.1" contype="2" conaffinity="1"/>
+    </default>
+
+    <default class="left_upper_leg_contact">
+      <geom type="capsule" size="0.006 0.012" pos="0 -0.015 0.012" euler="1.5708 0 0" group="0" rgba="1 0 0 0.3" friction="0.8 0.1 0.1" contype="2" conaffinity="1"/>
+    </default>
+
+    <default class="left_lower_leg_contact">
+      <geom type="capsule" size="0.003 0.015" pos="0 -0.02 0.0" euler="1.5708 0 0" group="0" rgba="1 0 0 0.3" friction="0.8 0.1 0.1" contype="2" conaffinity="1"/>
+    </default>
+  </default>
+
+  <asset>
+    <mesh name="base_link" content_type="model/stl" file="../meshes/base_link.STL"/>
+    <mesh name="fr_upper" content_type="model/stl" file="../meshes/fr_upper.STL"/>
+    <mesh name="fr_lower" content_type="model/stl" file="../meshes/fr_lower.STL"/>
+    <mesh name="fl_upper" content_type="model/stl" file="../meshes/fl_upper.STL"/>
+    <mesh name="fl_lower" content_type="model/stl" file="../meshes/fl_lower.STL"/>
+    <mesh name="br_upper" content_type="model/stl" file="../meshes/br_upper.STL"/>
+    <mesh name="br_lower" content_type="model/stl" file="../meshes/br_lower.STL"/>
+    <mesh name="bl_upper" content_type="model/stl" file="../meshes/bl_upper.STL"/>
+    <mesh name="bl_lower" content_type="model/stl" file="../meshes/bl_lower.STL"/>
+  </asset>
+
+  <worldbody>
+    <body name="base_link" pos="0 0 0.06">
+      <inertial pos="0.00015626 0.010712 -8.5813e-07" mass="0.12291" fullinertia="6.692e-06 4.319e-05 4.4066e-05 1.9795e-08 -3.4543e-08 -1.796e-09"/>
+      <freejoint/>
+      <site name="imu" pos="-0.000378 0.002669 0.02135" group="5"/>
+      <geom class="visual_mesh" rgba="0.79216 0.81961 0.93333 1" mesh="base_link"/>
+      <geom name="body_contact" class="body_contact"/>
+
+      <body name="fr_knee_rotor" pos="0 0 0">
+        <inertial pos="0 0 0" mass="1e-7" diaginertia="1e-12 1e-12 1e-12"/>
+        <joint class="knee_motor_joint" name="fr_knee_motor" axis="0 0 1"/>
+      </body>
+      <body name="fl_knee_rotor" pos="0 0 0">
+        <inertial pos="0 0 0" mass="1e-7" diaginertia="1e-12 1e-12 1e-12"/>
+        <joint class="knee_motor_joint" name="fl_knee_motor" axis="0 0 1"/>
+      </body>
+      <body name="br_knee_rotor" pos="0 0 0">
+        <inertial pos="0 0 0" mass="1e-7" diaginertia="1e-12 1e-12 1e-12"/>
+        <joint class="knee_motor_joint" name="br_knee_motor" axis="0 0 1"/>
+      </body>
+      <body name="bl_knee_rotor" pos="0 0 0">
+        <inertial pos="0 0 0" mass="1e-7" diaginertia="1e-12 1e-12 1e-12"/>
+        <joint class="knee_motor_joint" name="bl_knee_motor" axis="0 0 1"/>
+      </body>
+
+      <body name="fr_upper" pos="0.04425 -0.0259 0.01" quat="0.707105 0.707108 0 0">
+        <inertial pos="-5.4416e-11 -0.0092063 0.012443" quat="0.530443 0.467579 -0.467579 0.530443" mass="0.0019562" diaginertia="2.96753e-07 2.8174e-07 5.45496e-08"/>
+        <joint class="hip_joint" name="fr_joint0" pos="0 0 0" axis="0 0 -1"/>
+        <geom name="fr_upper_contact" class="right_upper_leg_contact"/>
+        <geom class="visual_mesh" rgba="0 1 0 1" mesh="fr_upper"/>
+        <body name="fr_lower" pos="0 -0.03075 0.01825">
+          <inertial pos="-1.0328e-08 -0.0085258 -0.0030811" quat="0.503734 0.496238 -0.496238 0.503734" mass="0.0020783" diaginertia="2.35358e-07 2.1923e-07 2.39545e-08"/>
+          <joint class="knee_hinge_bearing" name="fr_joint1" pos="0 0 0" axis="0 0 1"/>
+          <geom name="fr_lower_contact" class="right_lower_leg_contact"/>
+          <geom class="visual_mesh" rgba="0.50196 1 1 1" mesh="fr_lower"/>
+          <site name="fr_foot" pos="0 -0.0365 0" type="sphere" size="0.003" rgba="0.5 0 0.8 0.3" group="1"/>
+        </body>
+      </body>
+      <body name="fl_upper" pos="0.04425 0.0259 0.01" quat="-2.59734e-06 -2.59735e-06 0.707108 0.707105">
+        <inertial pos="-5.4416e-11 -0.0092063 0.012443" quat="0.530443 0.467579 -0.467579 0.530443" mass="0.0019562" diaginertia="2.96753e-07 2.8174e-07 5.45496e-08"/>
+        <joint class="hip_joint" name="fl_joint0" pos="0 0 0" axis="0 0 1"/>
+        <geom name="fl_upper_contact" class="left_upper_leg_contact"/>
+        <geom class="visual_mesh" rgba="0 1 0 1" mesh="fl_upper"/>
+        <body name="fl_lower" pos="0 -0.03075 0.01825">
+          <inertial pos="-1.0328e-08 -0.0085258 -0.0030811" quat="0.503734 0.496238 -0.496238 0.503734" mass="0.0020783" diaginertia="2.35358e-07 2.1923e-07 2.39545e-08"/>
+          <joint class="knee_hinge_bearing" name="fl_joint1" pos="0 0 0" axis="0 0 -1"/>
+          <geom name="fl_lower_contact" class="left_lower_leg_contact"/>
+          <geom class="visual_mesh" rgba="0.50196 1 1 1" mesh="fl_lower"/>
+          <site name="fl_foot" pos="0 -0.0365 0" type="sphere" size="0.003" rgba="0.5 0 0.8 0.3" group="1"/>
+        </body>
+      </body>
+      <body name="br_upper" pos="-0.04425 -0.0259 0.01" quat="0.707105 0.707108 0 0">
+        <inertial pos="-5.4416e-11 -0.0092063 0.012443" quat="0.530443 0.467579 -0.467579 0.530443" mass="0.0019562" diaginertia="2.96753e-07 2.8174e-07 5.45496e-08"/>
+        <joint class="hip_joint" name="br_joint0" pos="0 0 0" axis="0 0 -1"/>
+        <geom name="br_upper_contact" class="right_upper_leg_contact"/>
+        <geom class="visual_mesh" rgba="0 1 0 1" mesh="br_upper"/>
+        <body name="br_lower" pos="0 -0.03075 0.01825">
+          <inertial pos="-1.0328e-08 -0.0085258 -0.0030811" quat="0.503734 0.496238 -0.496238 0.503734" mass="0.0020783" diaginertia="2.35358e-07 2.1923e-07 2.39545e-08"/>
+          <joint class="knee_hinge_bearing" name="br_joint1" pos="0 0 0" axis="0 0 1"/>
+          <geom name="br_lower_contact" class="right_lower_leg_contact"/>
+          <geom class="visual_mesh" rgba="0.50196 1 1 1" mesh="br_lower"/>
+          <site name="br_foot" pos="0 -0.0365 0" type="sphere" size="0.003" rgba="0.5 0 0.8 0.3" group="1"/>
+        </body>
+      </body>
+      <body name="bl_upper" pos="-0.04425 0.0259 0.01" quat="-2.59734e-06 -2.59735e-06 0.707108 0.707105">
+        <inertial pos="-5.4416e-11 -0.0092063 0.012443" quat="0.530443 0.467579 -0.467579 0.530443" mass="0.0019562" diaginertia="2.96753e-07 2.8174e-07 5.45496e-08"/>
+        <joint class="hip_joint" name="bl_joint0" pos="0 0 0" axis="0 0 1"/>
+        <geom name="bl_upper_contact" class="left_upper_leg_contact"/>
+        <geom class="visual_mesh" rgba="0 1 0 1" mesh="bl_upper"/>
+        <body name="bl_lower" pos="0 -0.03075 0.01825">
+          <inertial pos="-1.0328e-08 -0.0085258 -0.0030811" quat="0.503734 0.496238 -0.496238 0.503734" mass="0.0020783" diaginertia="2.35358e-07 2.1923e-07 2.39545e-08"/>
+          <joint class="knee_hinge_bearing" name="bl_joint1" pos="0 0 0" axis="0 0 -1"/>
+          <geom name="bl_lower_contact" class="left_lower_leg_contact"/>
+          <geom class="visual_mesh" rgba="0.50196 1 1 1" mesh="bl_lower"/>
+          <site name="bl_foot" pos="0 -0.0365 0" type="sphere" size="0.003" rgba="0.5 0 0.8 0.3" group="1"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <tendon>
+    <fixed name="fr_belt">
+      <joint joint="fr_knee_motor" coef="1"/>
+      <joint joint="fr_joint0" coef="-1"/>
+      <joint joint="fr_joint1" coef="1"/>
+    </fixed>
+    <fixed name="fl_belt">
+      <joint joint="fl_knee_motor" coef="1"/>
+      <joint joint="fl_joint0" coef="-1"/>
+      <joint joint="fl_joint1" coef="1"/>
+    </fixed>
+    <fixed name="br_belt">
+      <joint joint="br_knee_motor" coef="1"/>
+      <joint joint="br_joint0" coef="-1"/>
+      <joint joint="br_joint1" coef="1"/>
+    </fixed>
+    <fixed name="bl_belt">
+      <joint joint="bl_knee_motor" coef="1"/>
+      <joint joint="bl_joint0" coef="-1"/>
+      <joint joint="bl_joint1" coef="1"/>
+    </fixed>
+  </tendon>
+
+  <equality>
+    <tendon tendon1="fr_belt"/>
+    <tendon tendon1="fl_belt"/>
+    <tendon tendon1="br_belt"/>
+    <tendon tendon1="bl_belt"/>
+  </equality>
+
+  <actuator>
+    <position class="hip_position_ctrl" name="fr_joint0_pos" joint="fr_joint0"/>
+    <position class="knee_position_ctrl" name="fr_joint1_pos" joint="fr_knee_motor"/>
+    <position class="hip_position_ctrl" name="fl_joint0_pos" joint="fl_joint0"/>
+    <position class="knee_position_ctrl" name="fl_joint1_pos" joint="fl_knee_motor"/>
+    <position class="hip_position_ctrl" name="br_joint0_pos" joint="br_joint0"/>
+    <position class="knee_position_ctrl" name="br_joint1_pos" joint="br_knee_motor"/>
+    <position class="hip_position_ctrl" name="bl_joint0_pos" joint="bl_joint0"/>
+    <position class="knee_position_ctrl" name="bl_joint1_pos" joint="bl_knee_motor"/>
+  </actuator>
+
+  <sensor>
+    <gyro site="imu" name="gyro"/>
+    <velocimeter site="imu" name="local_linvel"/>
+    <accelerometer site="imu" name="accelerometer"/>
+    <framepos objtype="site" objname="imu" name="position"/>
+    <framezaxis objtype="site" objname="imu" name="upvector"/>
+    <framexaxis objtype="site" objname="imu" name="forwardvector"/>
+    <framelinvel objtype="site" objname="imu" name="global_linvel"/>
+    <frameangvel objtype="site" objname="imu" name="global_angvel"/>
+    <framequat objtype="site" objname="imu" name="orientation"/>
+    <framelinvel objtype="site" objname="fr_foot" name="fr_foot_global_linvel"/>
+    <framelinvel objtype="site" objname="fl_foot" name="fl_foot_global_linvel"/>
+    <framelinvel objtype="site" objname="br_foot" name="br_foot_global_linvel"/>
+    <framelinvel objtype="site" objname="bl_foot" name="bl_foot_global_linvel"/>
+    <framepos objtype="site" objname="fr_foot" name="fr_foot_pos" reftype="site" refname="imu"/>
+    <framepos objtype="site" objname="fl_foot" name="fl_foot_pos" reftype="site" refname="imu"/>
+    <framepos objtype="site" objname="br_foot" name="br_foot_pos" reftype="site" refname="imu"/>
+    <framepos objtype="site" objname="bl_foot" name="bl_foot_pos" reftype="site" refname="imu"/>
+
+    <jointpos joint="fr_joint0" name="fr_joint0_actpos"/>
+    <jointpos joint="fr_knee_motor" name="fr_joint1_actpos"/>
+    <jointpos joint="fl_joint0" name="fl_joint0_actpos"/>
+    <jointpos joint="fl_knee_motor" name="fl_joint1_actpos"/>
+    <jointpos joint="br_joint0" name="br_joint0_actpos"/>
+    <jointpos joint="br_knee_motor" name="br_joint1_actpos"/>
+    <jointpos joint="bl_joint0" name="bl_joint0_actpos"/>
+    <jointpos joint="bl_knee_motor" name="bl_joint1_actpos"/>
+
+    <jointvel joint="fr_joint0" name="fr_joint0_actvel"/>
+    <jointvel joint="fr_knee_motor" name="fr_joint1_actvel"/>
+    <jointvel joint="fl_joint0" name="fl_joint0_actvel"/>
+    <jointvel joint="fl_knee_motor" name="fl_joint1_actvel"/>
+    <jointvel joint="br_joint0" name="br_joint0_actvel"/>
+    <jointvel joint="br_knee_motor" name="br_joint1_actvel"/>
+    <jointvel joint="bl_joint0" name="bl_joint0_actvel"/>
+    <jointvel joint="bl_knee_motor" name="bl_joint1_actvel"/>
+  </sensor>
+
+  <keyframe>
+    <key name="home"
+      qpos="1.63663e-06 2.21824e-05 0.045 1 -0.000195489 5.01299e-06 -2.57443e-06 -0.74 -0.74 -0.74 -0.74 0.9 1.64 0.9 1.64 0.9 1.64 0.9 1.64"
+      qvel="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+      act="-0.74 -0.74 -0.74 -0.74"
+      ctrl="0.9 -0.74 0.9 -0.74 0.9 -0.74 0.9 -0.74"/>
+  </keyframe>
+</mujoco>

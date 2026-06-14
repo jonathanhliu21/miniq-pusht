@@ -1,0 +1,36 @@
+<mujoco model="t">
+  <compiler angle="radian" />
+
+  <default>
+    <default class="pusht_object">
+      <geom type="box"
+        density="186"
+        friction="0.4 0.005 0.0001"
+        solref="0.01 1"
+        solimp="0.9 0.95 0.001"
+        contype="2"
+        conaffinity="3"
+        rgba="0.9 0.45 0.1 1"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <body name="push_t" pos="0 0 0.015" euler="0 0 0">
+      <freejoint name="push_t_freejoint"/>
+
+      <geom name="push_t_stem"
+            class="pusht_object"
+            size="0.10 0.025 0.015"
+            pos="-0.025 0 0"/>
+
+      <geom name="push_t_bar"
+            class="pusht_object"
+            size="0.025 0.105 0.015"
+            pos="0.075 0 0"/> 
+
+      <site name="push_t_bar_l" pos="0.075 -0.08 0.015" type="sphere" size="0.003" rgba="0.1 0.25 1 1" />
+      <site name="push_t_bar_r" pos="0.075 0.08 0.015" type="sphere" size="0.003" rgba="0.1 0.25 1 1" />
+      <site name="push_t_stem" pos="-0.1 0 0.015" type="sphere" size="0.003" rgba="0.1 0.25 1 1" />
+    </body>
+  </worldbody>
+</mujoco>

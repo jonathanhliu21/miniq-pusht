@@ -1,0 +1,36 @@
+<mujoco model="miniq scene">
+  <compiler angle="radian" />
+  <statistic center="0 0 0.04" extent="0.35"/>
+  <include file="t.xml" />
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="-130" elevation="-20"/>
+  </visual>
+
+  <asset>
+    <model name="miniq" file="miniq.xml"/>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+    <hfield name="terrain" nrow="256" ncol="256" size="10.0 10.0 0.01 0.005"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+    <geom name="floor" type="hfield" hfield="terrain" material="groundplane" friction="0.4 0.005 0.0001" contype="1" conaffinity="2"/>
+    <body name="target_push_t" pos="0 -0.25 0.015" euler="0 0 0">
+      <site name="target_push_t_bar_l" pos="0.075 -0.08 0.015" type="sphere" size="0.004" rgba="0.1 1 0.35 1"/>
+      <site name="target_push_t_bar_r" pos="0.075 0.08 0.015" type="sphere" size="0.004" rgba="0.1 1 0.35 1"/>
+      <site name="target_push_t_stem" pos="-0.1 0 0.015" type="sphere" size="0.004" rgba="0.1 1 0.35 1"/>
+    </body>
+    <frame pos="-0.15 0 0" euler="0 0 0">
+      <attach model="miniq" body="base_link" prefix="r1_"/>
+    </frame>
+    <frame pos="0.15 0 0" euler="0 0 0">
+      <attach model="miniq" body="base_link" prefix="r2_"/>
+    </frame>
+    <camera name="track" mode="trackcom" pos="0.35 -0.45 0.25" xyaxes="0.789 0.614 0 -0.220 0.283 0.934"/>
+  </worldbody>
+</mujoco>
