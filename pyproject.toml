@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "miniq-pusht"
+version = "0.1.0"
+description = "Push T task for MiniQ"
+requires-python = ">=3.11"
+dependencies = [
+    "playground==0.2.0",
+    "ml-collections",
+    "pyyaml",
+    "etils",
+    "wandb",
+    "mediapy",
+    "imageio-ffmpeg",
+    "plotly",
+    "Pillow",
+]
+
+[project.optional-dependencies]
+gpu = ["playground[cuda]==0.2.0"]
+dev = ["pytest"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

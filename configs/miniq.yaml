@@ -1,0 +1,23 @@
+env:
+  name: miniq_pusht
+  seed: 42
+
+mjcf:
+  path: miniq_mjcf/urdf/scene.xml
+
+# default home pose of robot. if null then defaults to qpos0
+home_key: home
+
+ctrl_dt: 0.02
+sim_dt: 0.005
+episode_length: 1000
+Kp_hip: 0.11
+Kp_knee: 0.143
+Kd_hip: 0.003
+Kd_knee: 0.003
+action_scale: 1.0
+target_base_height: 0.0356
+soft_joint_pos_limit_factor: 0.95
+impl: warp
+naconmax: 131072 # contacts_per_env * num_envs
+njmax: 96

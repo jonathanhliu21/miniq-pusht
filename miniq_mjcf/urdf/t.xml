@@ -33,4 +33,10 @@
       <site name="push_t_stem" pos="-0.1 0 0.015" type="sphere" size="0.003" rgba="0.1 0.25 1 1" />
     </body>
   </worldbody>
+
+  <sensor>
+    <framepos objtype="site" objname="push_t_bar_l" name="push_t_bar_l_pos"/>
+    <framepos objtype="site" objname="push_t_bar_r" name="push_t_bar_r_pos"/>
+    <framepos objtype="site" objname="push_t_stem" name="push_t_stem_pos"/>
+  </sensor>
 </mujoco>
