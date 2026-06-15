@@ -25,6 +25,17 @@ from .constants import (
 )
 
 
+def _home_key_id(
+    mj_model: mujoco.MjModel,
+    config: config_dict.ConfigDict,
+) -> int:
+    home_key_name = config.get("home_key", "home")
+    if not home_key_name:
+        return -1
+
+    return mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_KEY, home_key_name)
+
+
 @dataclass(frozen=True)
 class MiniQSpec:
     """Constants (joint limits), addresses of MiniQ robots"""
@@ -42,7 +53,6 @@ class MiniQSpec:
 
     # extracted state
     base_mass: float
-    init_q: jax.Array
     default_pose: jax.Array
     ctrlrange: jax.Array
 
@@ -92,17 +102,10 @@ class MiniQSpec:
         actuator_qposadr = jp.array(mj_model.jnt_qposadr[actuated_jnt_ids])
         actuator_dofadr = jp.array(mj_model.jnt_dofadr[actuated_jnt_ids])
 
-        home_key_name = config.get("home_key", "home")
-        home_key_id = (
-            mujoco.mj_name2id(mj_model, mujoco.mjtObj.mjOBJ_KEY, miniq_prefix + home_key_name)
-            if home_key_name
-            else -1
-        )
+        home_key_id = _home_key_id(mj_model, config)
         if home_key_id >= 0:
-            init_q = jp.array(mj_model.key_qpos[home_key_id])
             default_pose = jp.array(mj_model.key_ctrl[home_key_id][actuator_ids])
         else:
-            init_q = jp.array(mj_model.qpos0)
             default_pose = jp.array(
                 mj_model.qpos0[mj_model.jnt_qposadr[actuated_jnt_ids]]
             )
@@ -127,7 +130,6 @@ class MiniQSpec:
             feet_site_ids=feet_site_ids,
             nbody=mj_model.nbody,
             base_mass=mj_model.body_subtreemass[base_body_id],
-            init_q=init_q,
             default_pose=default_pose,
             ctrlrange=ctrlrange,
             soft_lowers=lowers * factor,
@@ -153,6 +155,10 @@ class ModelSpec:
     miniq1: MiniQSpec
     miniq2: MiniQSpec
 
+    # Full-scene reset qpos. This belongs to the whole model because it includes
+    # the T object and both MiniQs.
+    init_q: jax.Array
+
     # Site position sensors are the stable way to read these points from
     # data.sensordata. Sites themselves do not own qpos entries.
     push_t_site_pos_adr: jax.Array
@@ -175,10 +181,17 @@ class ModelSpec:
 
         push_t_joint_id = mj_model.joint(PUSH_T_FREEJOINT).id
         push_t_qpos_start = mj_model.jnt_qposadr[push_t_joint_id]
+        home_key_id = _home_key_id(mj_model, config)
+        init_q = (
+            jp.array(mj_model.key_qpos[home_key_id])
+            if home_key_id >= 0
+            else jp.array(mj_model.qpos0)
+        )
 
         return cls(
             miniq1=MiniQSpec.from_mj_model(ROBOT_1_PREFIX, mj_model, config),
             miniq2=MiniQSpec.from_mj_model(ROBOT_2_PREFIX, mj_model, config),
+            init_q=init_q,
             push_t_site_pos_adr=jp.array(
                 [
                     sensor_adr(site + SITE_POSITION_SENSOR_SUFFIX)
