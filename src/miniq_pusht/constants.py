@@ -3,6 +3,8 @@
 ROBOT_1_PREFIX = "r1_"
 ROBOT_2_PREFIX = "r2_"
 
+GAIT_FREQUENCY_HZ = 50.0
+
 PUSH_T_FREEJOINT = "push_t_freejoint"
 PUSH_T_SITES = ("push_t_bar_l", "push_t_bar_r", "push_t_stem")
 TARGET_PUSH_T_SITES = (
