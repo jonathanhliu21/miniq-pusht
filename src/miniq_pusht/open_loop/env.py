@@ -49,6 +49,7 @@ from mujoco.mjx._src import math
 from mujoco_playground._src import mjx_env
 
 from miniq_pusht.model_spec import ModelSpec
+from miniq_pusht.open_loop.observation import Observation
 
 class Env(mjx_env.MjxEnv):
     """Environment setup with open loop locomotion control"""
@@ -108,4 +109,37 @@ class Env(mjx_env.MjxEnv):
 
         # static model-derived constants (IDs, default pose, sensor addresses, ...)
         self._spec = ModelSpec.from_mj_model(self._mj_model, self._config)
+        self._obs_builder = Observation(self._spec, self._config)
 
+    def reset(self, rng: jax.Array) -> mjx_env.State:
+        qpos = self._spec.init_q
+        qvel = jp.zeros(self.mjx_model.nv)
+
+        # put data onto model
+        data = mjx.make_data(
+            self._mj_model,
+            impl=self._config.impl,
+            naconmax=self._config.naconmax,
+            njmax=self._config.njmax,
+        )
+        default_ctrl = jp.concatenate(
+            [self._spec.miniq1.default_pose, self._spec.miniq2.default_pose]
+        )
+        data = data.replace(qpos=qpos, qvel=qvel, ctrl=default_ctrl)
+        data = mjx.forward(self.mjx_model, data)
+
+        # build info
+        info = {
+            "rng": rng,
+            "last_action": jp.zeros(6),
+            "last_act": jp.zeros(6),
+            "gait_phase": jp.zeros(2),
+            "gait_frequency": jp.zeros(2),
+            "t_vel_estimate": jp.zeros(3),
+        }
+        obs = self._obs_builder.get_obs(data, info)
+
+        # build metrics
+        metrics = {}
+        reward, done = jp.zeros(()), jp.zeros(())
+        return mjx_env.State(data, obs, reward, done, metrics, info)
