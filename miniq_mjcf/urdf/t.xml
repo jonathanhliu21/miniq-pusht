@@ -15,7 +15,7 @@
   </default>
 
   <worldbody>
-    <body name="push_t" pos="0 0 0.015" euler="0 0 0">
+    <body name="push_t" pos="0 0 0.015" euler="0 0 1.57079632679">
       <freejoint name="push_t_freejoint"/>
 
       <geom name="push_t_stem"

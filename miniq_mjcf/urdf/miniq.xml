@@ -220,12 +220,4 @@
     <jointvel joint="bl_joint0" name="bl_joint0_actvel"/>
     <jointvel joint="bl_knee_motor" name="bl_joint1_actvel"/>
   </sensor>
-
-  <keyframe>
-    <key name="home"
-      qpos="1.63663e-06 2.21824e-05 0.045 1 -0.000195489 5.01299e-06 -2.57443e-06 -0.74 -0.74 -0.74 -0.74 0.9 1.64 0.9 1.64 0.9 1.64 0.9 1.64"
-      qvel="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
-      act="-0.74 -0.74 -0.74 -0.74"
-      ctrl="0.9 -0.74 0.9 -0.74 0.9 -0.74 0.9 -0.74"/>
-  </keyframe>
 </mujoco>
