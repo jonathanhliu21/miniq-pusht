@@ -16,28 +16,32 @@ class GaitGenerator:
     The generated target order matches the MJCF actuator order for one robot:
     FR hip, FR knee, FL hip, FL knee, BR hip, BR knee, BL hip, BL knee.
 
-    Inputs are normalized commands `[forward, yaw, effort]`.  This intentionally
+    Inputs are normalized commands `[forward, yaw]`.  This intentionally
     does not enforce a calibrated m/s mapping; larger absolute forward/yaw
-    commands produce larger stride and higher stepping frequency.
+    commands produce larger foot stride and higher stepping frequency.
     """
 
     default_pose: jax.Array
     ctrlrange: jax.Array
     base_frequency: float = 1.2
     max_frequency: float = 4.0
-    max_hip_amplitude: float = 0.45
-    max_knee_amplitude: float = 0.35
+    x0_mm: float = 0.0
+    y0_mm: float = 40.0
+    max_stride_mm: float = 40.0
+    max_lift_mm: float = 20.0
+    stance_drop_mm: float = 0.0
+    swing_count: float = 20.0
+    stance_count: float = 40.0
+    link_1_mm: float = 30.75
+    link_2_mm: float = 30.75
     yaw_stride_gain: float = 0.75
-    min_effort: float = 0.05
-    stance_knee_gain: float = 0.25
     update_rate_hz: float = GAIT_FREQUENCY_HZ
 
     def frequency(self, command: jax.Array) -> jax.Array:
-        """Returns oscillator frequency in Hz for `[forward, yaw, effort]`."""
-        forward, yaw, effort = self._clip_command(command)
+        """Returns oscillator frequency in Hz for `[forward, yaw]`."""
+        forward, yaw = self._clip_command(command)
         command_mag = jp.maximum(jp.abs(forward), jp.abs(yaw))
-        effort_mag = jp.abs(effort)
-        speed_scale = jp.clip(command_mag * effort_mag, 0.0, 1.0)
+        speed_scale = jp.clip(command_mag, 0.0, 1.0)
         return self.base_frequency + (self.max_frequency - self.base_frequency) * speed_scale
 
     def step_phase(self, phase: jax.Array, command: jax.Array) -> jax.Array:
@@ -57,8 +61,9 @@ class GaitGenerator:
 
     def targets(self, phase: jax.Array, command: jax.Array) -> jax.Array:
         """Maps normalized gait phase and command to 8 actuator targets."""
-        forward, yaw, effort = self._clip_command(command)
-        effort_scale = jp.clip(jp.abs(effort), self.min_effort, 1.0)
+        forward, yaw = self._clip_command(command)
+        command_mag = jp.maximum(jp.abs(forward), jp.abs(yaw))
+        movement_scale = jp.clip(command_mag, 0.0, 1.0)
 
         right_stride = jp.clip(forward + self.yaw_stride_gain * yaw, -1.0, 1.0)
         left_stride = jp.clip(forward - self.yaw_stride_gain * yaw, -1.0, 1.0)
@@ -72,16 +77,17 @@ class GaitGenerator:
             dtype=jp.float32,
         )
 
-        theta = 2.0 * jp.pi * leg_phases
-        hip_delta = self.max_hip_amplitude * effort_scale * side_stride * jp.sin(theta)
+        stride_mm = self.max_stride_mm * side_stride
+        lift_mm = self.max_lift_mm * movement_scale
+        stance_drop_mm = self.stance_drop_mm * movement_scale
+        foot_x, foot_y = self._foot_trajectory(leg_phases, stride_mm, lift_mm, stance_drop_mm)
 
-        swing = jp.maximum(jp.sin(theta), 0.0)
-        stance = jp.maximum(-jp.sin(theta), 0.0)
-        knee_delta = self.max_knee_amplitude * effort_scale * (
-            swing - self.stance_knee_gain * stance
+        ik_targets = self._ik_360(foot_x, foot_y)
+        nominal_ik = self._ik_360(
+            jp.full_like(foot_x, self.x0_mm),
+            jp.full_like(foot_y, self.y0_mm),
         )
-
-        deltas = jp.ravel(jp.stack([hip_delta, knee_delta], axis=1))
+        deltas = jp.ravel(ik_targets - nominal_ik)
         targets = self.default_pose + deltas
         return jp.clip(targets, self.ctrlrange[:, 0], self.ctrlrange[:, 1])
 
@@ -89,6 +95,43 @@ class GaitGenerator:
         return self.step(phase, command)
 
     @staticmethod
-    def _clip_command(command: jax.Array) -> tuple[jax.Array, jax.Array, jax.Array]:
+    def _clip_command(command: jax.Array) -> tuple[jax.Array, jax.Array]:
         command = jp.clip(command, -1.0, 1.0)
-        return command[0], command[1], command[2]
+        return command[0], command[1]
+
+    def _foot_trajectory(
+        self,
+        phase: jax.Array,
+        stride_mm: jax.Array,
+        lift_mm: jax.Array,
+        stance_drop_mm: jax.Array,
+    ) -> tuple[jax.Array, jax.Array]:
+        """Continuous version of the historical MiniQ base trajectory."""
+        swing_fraction = self.swing_count / (self.swing_count + self.stance_count)
+        in_swing = phase < swing_fraction
+        swing_u = jp.clip(phase / swing_fraction, 0.0, 1.0)
+        stance_u = jp.clip((phase - swing_fraction) / (1.0 - swing_fraction), 0.0, 1.0)
+
+        x_start = self.x0_mm - stride_mm / 2.0
+        x_end = self.x0_mm + stride_mm / 2.0
+        swing_x = x_start + swing_u * stride_mm
+        stance_x = x_end - stance_u * stride_mm
+        swing_y = self.y0_mm - jp.sin(jp.pi * swing_u) * lift_mm
+        stance_y = self.y0_mm + jp.sin(jp.pi * stance_u) * stance_drop_mm
+
+        return jp.where(in_swing, swing_x, stance_x), jp.where(in_swing, swing_y, stance_y)
+
+    def _ik_360(self, x_mm: jax.Array, y_mm: jax.Array) -> jax.Array:
+        """Vectorized JAX form of `k_solver_360.ik_solve(..., deg=False)`."""
+        r2 = x_mm * x_mm + y_mm * y_mm
+        c2 = (r2 - self.link_1_mm**2 - self.link_2_mm**2) / (
+            2.0 * self.link_1_mm * self.link_2_mm
+        )
+        c2 = jp.clip(c2, -0.999, 0.999)
+        s2 = -jp.sqrt(jp.maximum(0.0, 1.0 - c2 * c2))
+        q2 = jp.arctan2(s2, c2)
+        q1 = jp.arctan2(y_mm, x_mm) - jp.arctan2(
+            self.link_2_mm * s2,
+            self.link_1_mm + self.link_2_mm * c2,
+        )
+        return jp.stack([q1, q1 + q2], axis=1)

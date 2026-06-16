@@ -50,6 +50,7 @@ from mujoco_playground._src import mjx_env
 
 from miniq_pusht.model_spec import ModelSpec
 from miniq_pusht.open_loop.observation import Observation
+from miniq_pusht.open_loop.open_loop import GaitGenerator
 
 class Env(mjx_env.MjxEnv):
     """Environment setup with open loop locomotion control"""
@@ -110,6 +111,32 @@ class Env(mjx_env.MjxEnv):
         # static model-derived constants (IDs, default pose, sensor addresses, ...)
         self._spec = ModelSpec.from_mj_model(self._mj_model, self._config)
         self._obs_builder = Observation(self._spec, self._config)
+        self._gait1 = GaitGenerator(self._spec.miniq1.default_pose, self._spec.miniq1.ctrlrange)
+        self._gait2 = GaitGenerator(self._spec.miniq2.default_pose, self._spec.miniq2.ctrlrange)
+
+    @property
+    def xml_path(self) -> str:
+        return self._xml_path
+
+    @property
+    def action_size(self) -> int:
+        return 4
+
+    @property
+    def observation_size(self) -> dict[str, int]:
+        return self._obs_builder.observation_size
+
+    @property
+    def mj_model(self) -> mujoco.MjModel:
+        return self._mj_model
+
+    @property
+    def mjx_model(self) -> mjx.Model:
+        return self._mjx_model
+
+    @property
+    def backend(self) -> str:
+        return "mjx"
 
     def reset(self, rng: jax.Array) -> mjx_env.State:
         qpos = self._spec.init_q
@@ -131,8 +158,8 @@ class Env(mjx_env.MjxEnv):
         # build info
         info = {
             "rng": rng,
-            "last_action": jp.zeros(6),
-            "last_act": jp.zeros(6),
+            "last_action": jp.zeros(4),
+            "last_act": jp.zeros(4),
             "gait_phase": jp.zeros(2),
             "gait_frequency": jp.zeros(2),
             "t_vel_estimate": jp.zeros(3),
@@ -143,3 +170,64 @@ class Env(mjx_env.MjxEnv):
         metrics = {}
         reward, done = jp.zeros(()), jp.zeros(())
         return mjx_env.State(data, obs, reward, done, metrics, info)
+
+    def step(self, state: mjx_env.State, action: jax.Array) -> mjx_env.State:
+        action = jp.asarray(action).reshape((self.action_size,))
+        action_scale = self._config.get("action_scale", 1.0)
+        scaled_action = jp.clip(action * action_scale, -1.0, 1.0)
+
+        prev_t_xy = self._obs_builder.t_xy(state.data)
+        prev_t_yaw = self._obs_builder.t_yaw(state.data)
+
+        gait_steps_per_ctrl = self._config.get("gait_steps_per_ctrl", 1)
+        sim_steps_per_gait = self.n_substeps // gait_steps_per_ctrl
+
+        def gait_step(
+            carry: tuple[mjx.Data, jax.Array],
+            _: None,
+        ) -> tuple[tuple[mjx.Data, jax.Array], None]:
+            data, phase = carry
+            phase1, ctrl1 = self._gait1.step(phase[0], scaled_action[:2])
+            phase2, ctrl2 = self._gait2.step(phase[1], scaled_action[2:])
+            phase = jp.array([phase1, phase2])
+            ctrl = jp.concatenate([ctrl1, ctrl2])
+            data = mjx_env.step(self.mjx_model, data, ctrl, sim_steps_per_gait)
+            return (data, phase), None
+
+        (data, phase), _ = jax.lax.scan(
+            gait_step,
+            (state.data, state.info["gait_phase"]),
+            None,
+            length=gait_steps_per_ctrl,
+        )
+
+        t_xy = self._obs_builder.t_xy(data)
+        t_yaw = self._obs_builder.t_yaw(data)
+        yaw_delta = jp.arctan2(jp.sin(t_yaw - prev_t_yaw), jp.cos(t_yaw - prev_t_yaw))
+        t_vel_estimate = jp.array(
+            [
+                (t_xy[0] - prev_t_xy[0]) / self.dt,
+                (t_xy[1] - prev_t_xy[1]) / self.dt,
+                yaw_delta / self.dt,
+            ]
+        )
+
+        info = dict(state.info)
+        info.update(
+            {
+                "last_action": scaled_action,
+                "last_act": scaled_action,
+                "gait_phase": phase,
+                "gait_frequency": jp.array(
+                    [
+                        self._gait1.frequency(scaled_action[:2]),
+                        self._gait2.frequency(scaled_action[2:]),
+                    ]
+                ),
+                "t_vel_estimate": t_vel_estimate,
+            }
+        )
+        obs = self._obs_builder.get_obs(data, info)
+
+        reward, done = jp.zeros(()), jp.zeros(())
+        return mjx_env.State(data, obs, reward, done, state.metrics, info)

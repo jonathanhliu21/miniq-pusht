@@ -30,7 +30,7 @@ class Observation:
         t_yaw_error = self.t_yaw(data) - self.target_yaw(data)
         t_site_xy_error = jp.linalg.norm(self.t_site_error(data)[:, :2], axis=1)
         t_vel_estimate = info.get("t_vel_estimate", self.t_planar_vel(data))
-        last_action = info.get("last_action", info.get("last_act", jp.zeros(6)))
+        last_action = info.get("last_act", jp.zeros(4))
 
         actor_state = jp.hstack(
             [
@@ -191,7 +191,7 @@ class Observation:
 
     @property
     def observation_size(self) -> dict[str, int]:
-        state_size = 24
+        state_size = 22
         robot_body_force_size = (
             self._spec.miniq1.body_ids.size + self._spec.miniq2.body_ids.size
         ) * 6
