@@ -203,6 +203,8 @@ class ModelSpec:
     push_t_qposadr: jax.Array
     push_t_dofadr: jax.Array
     push_t_geom_ids: jax.Array
+    floor_geom_id: int
+    t_floor_pair_ids: jax.Array
 
     @classmethod
     def from_mj_model(
@@ -235,9 +237,25 @@ class ModelSpec:
             else jp.array(mj_model.qpos0)
         )
 
+        miniq1 = MiniQSpec.from_mj_model(ROBOT_1_PREFIX, mj_model, config)
+        miniq2 = MiniQSpec.from_mj_model(ROBOT_2_PREFIX, mj_model, config)
+        floor_geom_id = mj_model.geom("floor").id
+        t_geom_id_set = set(map(int, push_t_geom_ids))
+
+        def pair_ids(geom_ids_a: set[int], geom_ids_b: set[int]) -> jax.Array:
+            ids = []
+            for pair_id in range(mj_model.npair):
+                geom1 = int(mj_model.pair_geom1[pair_id])
+                geom2 = int(mj_model.pair_geom2[pair_id])
+                if (geom1 in geom_ids_a and geom2 in geom_ids_b) or (
+                    geom1 in geom_ids_b and geom2 in geom_ids_a
+                ):
+                    ids.append(pair_id)
+            return jp.array(ids, dtype=jp.int32)
+
         return cls(
-            miniq1=MiniQSpec.from_mj_model(ROBOT_1_PREFIX, mj_model, config),
-            miniq2=MiniQSpec.from_mj_model(ROBOT_2_PREFIX, mj_model, config),
+            miniq1=miniq1,
+            miniq2=miniq2,
             init_q=init_q,
             push_t_site_pos_adr=jp.array(
                 [
@@ -256,4 +274,6 @@ class ModelSpec:
             push_t_qposadr=jp.arange(push_t_qpos_start, push_t_qpos_start + 7),
             push_t_dofadr=jp.arange(push_t_dof_start, push_t_dof_start + 6),
             push_t_geom_ids=push_t_geom_ids,
+            floor_geom_id=floor_geom_id,
+            t_floor_pair_ids=pair_ids({floor_geom_id}, t_geom_id_set),
         )

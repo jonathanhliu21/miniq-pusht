@@ -34,6 +34,11 @@
     <camera name="track" mode="trackcom" pos="0.35 -0.45 0.25" xyaxes="0.789 0.614 0 -0.220 0.283 0.934"/>
   </worldbody>
 
+  <contact>
+    <pair geom1="floor" geom2="push_t_stem" friction="0.3 0.005 0.0001"/>
+    <pair geom1="floor" geom2="push_t_bar" friction="0.3 0.005 0.0001"/>
+  </contact>
+
   <sensor>
     <framepos objtype="site" objname="target_push_t_bar_l" name="target_push_t_bar_l_pos"/>
     <framepos objtype="site" objname="target_push_t_bar_r" name="target_push_t_bar_r_pos"/>

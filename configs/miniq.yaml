@@ -22,3 +22,55 @@ soft_joint_pos_limit_factor: 0.95
 impl: warp
 naconmax: 131072 # contacts_per_env * num_envs
 njmax: 96
+
+domain_randomization:
+  enable: true                                # master switch for all model, gait, target, and reset randomization
+
+  push_t:
+    enable: true                              # randomize Push-T object physical properties
+    mass_scale: [0.7, 1.3]                    # *U  (body_mass on push_t body)
+    inertia_scale: [0.7, 1.5]                 # *U  (body_inertia on push_t body)
+    com_xy_jitter: [-0.008, 0.008]            # +U  (body_ipos x/y on push_t body, meters)
+    geom_size_scale: [0.95, 1.05]             # *U  (push_t_stem and push_t_bar geom_size)
+
+  miniq:
+    enable: true                              # randomize MiniQ 1 and MiniQ 2 independently
+    base_mass_scale: [0.9, 1.1]               # *U  (body_mass on each base_link)
+    base_com_xy_jitter: [-0.004, 0.004]       # +U  (base body_ipos x/y, meters)
+    base_com_z_jitter: [-0.003, 0.003]        # +U  (base body_ipos z, meters)
+    joint_frictionloss_scale: [0.5, 2.0]      # *U  (dof_frictionloss on actuated DoFs)
+    armature_scale: [0.7, 1.5]                # *U  (dof_armature on actuated DoFs)
+    motor_strength_scale: [0.75, 1.25]        # *U  (actuator_gear column 0)
+    kp_scale: [0.8, 1.2]                      # *U  (actuator_gainprm and matching biasprm)
+    kd_scale: [0.5, 1.5]                      # *U  (dof_damping on actuated DoFs)
+    default_joint_offset: [-0.08, 0.08]       # +U  (qpos0 on actuated joints, radians)
+
+  gait:
+    enable: true                              # randomize open-loop gait params per robot at reset
+    left_right_stride_scale: [0.85, 1.15]     # *U  (left and right stride multipliers sampled separately)
+    front_rear_stride_scale: [0.90, 1.10]     # *U  (front and rear stride multipliers sampled separately)
+    frequency_scale: [0.85, 1.15]             # *U  (base/max gait frequency)
+    yaw_stride_gain_scale: [0.6, 1.1]         # *U  (nominal yaw_stride_gain)
+    lift_height_scale: [0.8, 1.2]             # *U  (max_lift_mm)
+    phase_offset_error: [-0.05, 0.05]         # +U  (per-leg phase offset, cycles)
+
+  contact:
+    enable: true                              # randomize floor, robot, and explicit T contact pair friction
+    floor_geom_id: 0                          # index of the floor geom; defaults to the named floor geom in code
+    floor_friction: [0.3, 0.4]                # =U  (floor geom sliding friction)
+    robot_contact_friction: [0.5, 1.2]        # =U  (robot contact geom sliding friction)
+    t_floor_friction: [0.25, 0.4]             # =U  (floor-T pair_friction plus T geom sliding friction)
+    t_robot_friction: [0.4, 1.0]              # =U  (T-robot explicit pair_friction)
+    floor_height_offset: [-0.002, 0.002]      # +U  (floor geom z offset, meters)
+
+  starts:
+    enable: true                              # randomize target pose and per-reset initial state
+    push_t_xy_jitter: [-0.3, 0.3]             # +U  (per-reset Push-T x/y offset from home, meters)
+    push_t_yaw: [-3.141592653589793, 3.141592653589793]  # +U  (per-reset Push-T yaw offset, radians)
+    target_xy_jitter: [-0.3, 0.3]             # +U  (target body x/y offset baked into randomized model, meters)
+    target_yaw: [-3.141592653589793, 3.141592653589793]  # =U  (target body yaw baked into randomized model, radians)
+    robot_xy_jitter: [-0.1, 0.1]              # +U  (per-reset robot x/y offsets from home, meters)
+    robot_yaw: [-0.523598775598299, 0.523598775598299]  # +U  (per-reset robot yaw offsets, radians)
+    initial_qpos_noise: [-0.05, 0.05]         # +U  (per-reset actuated joint qpos noise, radians)
+    initial_qvel_noise: [-0.02, 0.02]         # +U  (per-reset full qvel noise, m/s and rad/s)
+    min_robot_start_distance: 0.16            # scalar  minimum robot base xy separation after jitter, meters

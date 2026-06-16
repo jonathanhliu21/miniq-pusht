@@ -37,6 +37,18 @@ def _patch_warp_mjx_compat() -> None:
     if hasattr(_wp, "math") and not hasattr(_wp.math, "sqrt"):
         _wp.math.sqrt = _wp.sqrt
 
+    try:
+        from warp.jax_experimental.ffi import JaxCallableGraphMode as _GraphMode
+        from mujoco.mjx import warp as _mjxw
+    except ImportError:
+        return
+    if (
+        hasattr(_mjxw, "types")
+        and getattr(_mjxw.types, "GraphMode", None) is int
+        and hasattr(_GraphMode, "WARP")
+    ):
+        _mjxw.types.GraphMode = _GraphMode
+
 
 _patch_warp_mjx_compat()
 
@@ -51,6 +63,11 @@ from mujoco_playground._src import mjx_env
 from miniq_pusht.model_spec import ModelSpec
 from miniq_pusht.open_loop.observation import Observation
 from miniq_pusht.open_loop.open_loop import GaitGenerator
+from miniq_pusht.randomize import (
+    domain_randomize as randomize_model,
+    randomize_gait_params,
+    randomize_reset,
+)
 
 class Env(mjx_env.MjxEnv):
     """Environment setup with open loop locomotion control"""
@@ -114,6 +131,14 @@ class Env(mjx_env.MjxEnv):
         self._gait1 = GaitGenerator(self._spec.miniq1.default_pose, self._spec.miniq1.ctrlrange)
         self._gait2 = GaitGenerator(self._spec.miniq2.default_pose, self._spec.miniq2.ctrlrange)
 
+    def domain_randomize(
+        self,
+        model: mjx.Model,
+        rng: jax.Array,
+    ) -> tuple[mjx.Model, Any]:
+        """Brax/MJX domain randomization callback."""
+        return randomize_model(model, rng, self._config, self._spec)
+
     @property
     def xml_path(self) -> str:
         return self._xml_path
@@ -139,8 +164,15 @@ class Env(mjx_env.MjxEnv):
         return "mjx"
 
     def reset(self, rng: jax.Array) -> mjx_env.State:
+        rng, reset_rng, gait_rng = jax.random.split(rng, 3)
         qpos = self._spec.init_q
         qvel = jp.zeros(self.mjx_model.nv)
+        randomization_cfg = self._config.get("domain_randomization", {})
+        randomization_enabled = randomization_cfg.get("enable", True)
+        starts_enabled = randomization_cfg.get("starts", {}).get("enable", True)
+        gait_enabled = randomization_cfg.get("gait", {}).get("enable", True)
+        if randomization_enabled and starts_enabled:
+            qpos, qvel = randomize_reset(qpos, qvel, reset_rng, self._config, self._spec)
 
         # put data onto model
         data = mjx.make_data(
@@ -161,6 +193,17 @@ class Env(mjx_env.MjxEnv):
             "last_action": jp.zeros(4),
             "last_act": jp.zeros(4),
             "gait_phase": jp.zeros(2),
+            "gait_params": (
+                randomize_gait_params(gait_rng, self._config)
+                if randomization_enabled and gait_enabled
+                else jp.array(
+                    [
+                        [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                        [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                    ],
+                    dtype=jp.float32,
+                )
+            ),
             "gait_frequency": jp.zeros(2),
             "t_vel_estimate": jp.zeros(3),
         }
@@ -187,8 +230,13 @@ class Env(mjx_env.MjxEnv):
             _: None,
         ) -> tuple[tuple[mjx.Data, jax.Array], None]:
             data, phase = carry
-            phase1, ctrl1 = self._gait1.step(phase[0], scaled_action[:2])
-            phase2, ctrl2 = self._gait2.step(phase[1], scaled_action[2:])
+            gait_params = state.info["gait_params"]
+            phase1, ctrl1 = self._gait1.step_randomized(
+                phase[0], scaled_action[:2], gait_params[0]
+            )
+            phase2, ctrl2 = self._gait2.step_randomized(
+                phase[1], scaled_action[2:], gait_params[1]
+            )
             phase = jp.array([phase1, phase2])
             ctrl = jp.concatenate([ctrl1, ctrl2])
             data = mjx_env.step(self.mjx_model, data, ctrl, sim_steps_per_gait)
@@ -220,8 +268,12 @@ class Env(mjx_env.MjxEnv):
                 "gait_phase": phase,
                 "gait_frequency": jp.array(
                     [
-                        self._gait1.frequency(scaled_action[:2]),
-                        self._gait2.frequency(scaled_action[2:]),
+                        self._gait1.frequency_with_scale(
+                            scaled_action[:2], state.info["gait_params"][0, 4]
+                        ),
+                        self._gait2.frequency_with_scale(
+                            scaled_action[2:], state.info["gait_params"][1, 4]
+                        ),
                     ]
                 ),
                 "t_vel_estimate": t_vel_estimate,

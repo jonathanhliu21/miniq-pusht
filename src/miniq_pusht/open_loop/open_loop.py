@@ -6,6 +6,7 @@ import jax
 import jax.numpy as jp
 
 from miniq_pusht.constants import GAIT_FREQUENCY_HZ
+from miniq_pusht.randomize import GAIT_FREQ, GAIT_LIFT, GAIT_PHASE, GAIT_STRIDE, GAIT_YAW
 
 
 @jax.tree_util.register_dataclass
@@ -39,15 +40,31 @@ class GaitGenerator:
 
     def frequency(self, command: jax.Array) -> jax.Array:
         """Returns oscillator frequency in Hz for `[forward, yaw]`."""
+        return self.frequency_with_scale(command, 1.0)
+
+    def frequency_with_scale(
+        self, command: jax.Array, frequency_scale: jax.Array
+    ) -> jax.Array:
+        """Returns oscillator frequency with a multiplicative randomization."""
         forward, yaw = self._clip_command(command)
         command_mag = jp.maximum(jp.abs(forward), jp.abs(yaw))
         speed_scale = jp.clip(command_mag, 0.0, 1.0)
-        return self.base_frequency + (self.max_frequency - self.base_frequency) * speed_scale
+        frequency = self.base_frequency + (self.max_frequency - self.base_frequency) * speed_scale
+        return frequency * frequency_scale
 
     def step_phase(self, phase: jax.Array, command: jax.Array) -> jax.Array:
         """Advances a normalized phase in cycles, wrapping to `[0, 1)`."""
+        return self.step_phase_with_scale(phase, command, 1.0)
+
+    def step_phase_with_scale(
+        self,
+        phase: jax.Array,
+        command: jax.Array,
+        frequency_scale: jax.Array,
+    ) -> jax.Array:
+        """Advances a normalized phase with a randomized frequency scale."""
         dt = 1.0 / self.update_rate_hz
-        return jp.mod(phase + self.frequency(command) * dt, 1.0)
+        return jp.mod(phase + self.frequency_with_scale(command, frequency_scale) * dt, 1.0)
 
     def step(self, phase: jax.Array, command: jax.Array) -> tuple[jax.Array, jax.Array]:
         """Advances phase at 50 Hz and returns `(next_phase, targets)`.
@@ -59,26 +76,53 @@ class GaitGenerator:
         next_phase = self.step_phase(phase, command)
         return next_phase, self.targets(next_phase, command)
 
+    def step_randomized(
+        self,
+        phase: jax.Array,
+        command: jax.Array,
+        params: jax.Array,
+    ) -> tuple[jax.Array, jax.Array]:
+        """Advances phase and returns targets using per-episode gait params."""
+        next_phase = self.step_phase_with_scale(phase, command, params[GAIT_FREQ])
+        return next_phase, self.targets_randomized(next_phase, command, params)
+
     def targets(self, phase: jax.Array, command: jax.Array) -> jax.Array:
         """Maps normalized gait phase and command to 8 actuator targets."""
+        default_params = jp.array(
+            [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+            dtype=jp.float32,
+        )
+        return self.targets_randomized(phase, command, default_params)
+
+    def targets_randomized(
+        self,
+        phase: jax.Array,
+        command: jax.Array,
+        params: jax.Array,
+    ) -> jax.Array:
+        """Maps gait phase and command to targets with per-leg randomization."""
         forward, yaw = self._clip_command(command)
         command_mag = jp.maximum(jp.abs(forward), jp.abs(yaw))
         movement_scale = jp.clip(command_mag, 0.0, 1.0)
 
-        right_stride = jp.clip(forward + self.yaw_stride_gain * yaw, -1.0, 1.0)
-        left_stride = jp.clip(forward - self.yaw_stride_gain * yaw, -1.0, 1.0)
+        yaw_stride_gain = self.yaw_stride_gain * params[GAIT_YAW]
+        right_stride = jp.clip(forward + yaw_stride_gain * yaw, -1.0, 1.0)
+        left_stride = jp.clip(forward - yaw_stride_gain * yaw, -1.0, 1.0)
 
         # Trot phasing: FR and BL together, FL and BR offset by half a cycle.
         leg_phases = jp.mod(
-            phase + jp.array([0.0, 0.5, 0.5, 0.0], dtype=jp.float32), 1.0
+            phase
+            + jp.array([0.0, 0.5, 0.5, 0.0], dtype=jp.float32)
+            + params[GAIT_PHASE],
+            1.0,
         )
         side_stride = jp.array(
             [right_stride, left_stride, right_stride, left_stride],
             dtype=jp.float32,
         )
 
-        stride_mm = self.max_stride_mm * side_stride
-        lift_mm = self.max_lift_mm * movement_scale
+        stride_mm = self.max_stride_mm * side_stride * params[GAIT_STRIDE]
+        lift_mm = self.max_lift_mm * movement_scale * params[GAIT_LIFT]
         stance_drop_mm = self.stance_drop_mm * movement_scale
         foot_x, foot_y = self._foot_trajectory(leg_phases, stride_mm, lift_mm, stance_drop_mm)
 
