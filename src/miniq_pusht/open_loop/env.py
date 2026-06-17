@@ -59,6 +59,7 @@ import mujoco
 from mujoco import mjx
 from mujoco.mjx._src import math
 from mujoco_playground._src import mjx_env
+import yaml
 
 from miniq_pusht.model_spec import ModelSpec
 from miniq_pusht.open_loop.observation import Observation
@@ -69,6 +70,33 @@ from miniq_pusht.randomize import (
     randomize_reset,
 )
 
+def append_yaml_to_config(
+    file_name: str, config: config_dict.ConfigDict
+) -> config_dict.ConfigDict:
+    """Reads a YAML file and appends/merges its contents into an ml_collections ConfigDict.
+
+    Args:
+        file_name: The path to the YAML file.
+        config: The existing ml_collections.ConfigDict instance.
+
+    Returns:
+        The updated ConfigDict instance.
+    """
+    try:
+        with open(file_name, "r") as f:
+            yaml_data = yaml.safe_load(f)
+
+        if yaml_data:
+            # ml_collections.ConfigDict.update() recursively merges nested dictionaries
+            config.update(yaml_data)
+
+    except FileNotFoundError:
+        print(f"Error: The file '{file_name}' was not found.")
+    except yaml.YAMLError as exc:
+        print(f"Error parsing YAML file: {exc}")
+
+    return config
+
 class Env(mjx_env.MjxEnv):
     """Environment setup with open loop locomotion control"""
 
@@ -78,6 +106,10 @@ class Env(mjx_env.MjxEnv):
         config_overrides: dict[str, Any] | None = None,
     ):
         super().__init__(config, config_overrides)
+
+        # set up appended config
+        extra_configs = self._config.env.extra_configs
+        self._config = append_yaml_to_config(extra_configs, self._config)
 
         # set up simulator
         self._xml_path = str(Path(self._config.mjcf.path))

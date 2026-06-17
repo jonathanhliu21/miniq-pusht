@@ -1,6 +1,7 @@
 env:
   name: miniq_pusht
   seed: 42
+  extra_configs: configs/open_loop.yaml
 
 mjcf:
   path: miniq_mjcf/urdf/scene.xml

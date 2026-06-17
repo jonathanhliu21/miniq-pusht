@@ -22,17 +22,51 @@ class Observation:
         self._config = config
 
     def get_obs(self, data: mjx.Data, info: dict[str, Any]) -> dict[str, jax.Array]:
-        r1_rel_xy = self.robot_xy(data, self._spec.miniq1) - self.t_xy(data)
-        r2_rel_xy = self.robot_xy(data, self._spec.miniq2) - self.t_xy(data)
-        r1_rel_yaw = self.robot_yaw(data, self._spec.miniq1) - self.t_yaw(data)
-        r2_rel_yaw = self.robot_yaw(data, self._spec.miniq2) - self.t_yaw(data)
-        t_rel_target_xy = self.t_xy(data) - self.target_xy(data)
-        t_yaw_error = self.t_yaw(data) - self.target_yaw(data)
+        robot1_xy = self.robot_xy(data, self._spec.miniq1)
+        robot1_xy_noisy = self._add_noise(info, robot1_xy, self._config.noise_config.scales.robot1_xy) 
+        robot1_yaw = self.robot_yaw(data, self._spec.miniq1) 
+        robot1_yaw_noisy = self._add_noise(info, robot1_yaw, self._config.noise_config.scales.robot1_yaw)
+
+        robot2_xy = self.robot_xy(data, self._spec.miniq2)
+        robot2_xy_noisy = self._add_noise(info, robot2_xy, self._config.noise_config.scales.robot2_xy) 
+        robot2_yaw = self.robot_yaw(data, self._spec.miniq2)
+        robot2_yaw_noisy = self._add_noise(info, robot2_xy, self._config.noise_config.scales.robot2_yaw) 
+
+        t_xy = self.t_xy(data)
+        t_xy_noisy = self._add_noise(info, t_xy, self._config.noise_config.scales.t_xy)
+        t_yaw = self.t_yaw(data)
+        t_yaw_noisy = self._add_noise(info, t_yaw, self._config.noise_config.scales.t_yaw)
+
+        r1_rel_xy = robot1_xy - t_xy
+        r2_rel_xy = robot2_xy - t_xy
+        r1_rel_yaw = robot1_yaw - t_yaw
+        r2_rel_yaw = robot2_yaw - t_yaw
+        t_rel_target_xy = t_xy - self.target_xy(data)
+        t_yaw_error = t_yaw - self.target_yaw(data)
         t_site_xy_error = jp.linalg.norm(self.t_site_error(data)[:, :2], axis=1)
         t_vel_estimate = info.get("t_vel_estimate", self.t_planar_vel(data))
         last_action = info.get("last_act", jp.zeros(4))
 
-        actor_state = jp.hstack(
+        r1_rel_xy_noisy = robot1_xy_noisy - t_xy_noisy
+        r2_rel_xy_noisy = robot2_xy_noisy - t_xy_noisy
+        r1_rel_yaw_noisy = robot1_yaw_noisy - t_yaw_noisy
+        r2_rel_yaw_noisy = robot2_yaw_noisy - t_yaw_noisy
+        t_rel_target_xy_noisy = t_xy_noisy - self.target_xy(data)
+        t_yaw_error_noisy = t_yaw_noisy - self.target_yaw(data)
+        t_vel_estimate_noisy = self._add_noise(info, t_vel_estimate, self._config.scales.t_vel_estimate)
+
+        state = jp.hstack([
+                r1_rel_xy_noisy,
+                r2_rel_xy_noisy,
+                self.sin_cos(r1_rel_yaw_noisy),
+                self.sin_cos(r2_rel_yaw_noisy),
+                t_rel_target_xy_noisy,
+                self.sin_cos(t_yaw_error_noisy),
+                t_vel_estimate_noisy,
+                last_action,
+        ])
+
+        unnoisy_state = jp.hstack(
             [
                 r1_rel_xy,
                 r2_rel_xy,
@@ -42,14 +76,13 @@ class Observation:
                 self.sin_cos(t_yaw_error),
                 t_site_xy_error,
                 t_vel_estimate,
-                last_action,
             ]
         )
-        state = self._add_noise(info, actor_state, self._noise_scale("state", 1.0))
 
         privileged_state = jp.hstack(
             [
                 state,
+                unnoisy_state,
                 self.t_qpos(data),
                 self.t_linear_vel(data),
                 self.t_angular_vel(data),
@@ -78,23 +111,12 @@ class Observation:
         )
         return {"state": state, "privileged_state": privileged_state}
 
-    def _noise_scale(self, name: str, default: float) -> float:
-        noise_config = getattr(self._config, "noise_config", None)
-        scales = getattr(noise_config, "scales", None)
-        if scales is None:
-            return default
-        return scales.get(name, default)
-
     def _add_noise(
         self, info: dict[str, Any], value: jax.Array, scale: float
     ) -> jax.Array:
-        noise_config = getattr(self._config, "noise_config", None)
-        level = getattr(noise_config, "level", 0.0)
-        if level == 0.0 or scale == 0.0:
-            return value
         info["rng"], noise_rng = jax.random.split(info["rng"])
         noise = 2 * jax.random.uniform(noise_rng, shape=value.shape) - 1
-        return value + noise * level * scale
+        return value + noise * self._config.noise_config.level * scale
 
     @staticmethod
     def sin_cos(angle: jax.Array) -> jax.Array:

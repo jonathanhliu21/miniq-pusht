@@ -1,0 +1,49 @@
+noise_config:
+  level: 1.0
+  scales:
+    robot1_xy: 0.01
+    robot1_yaw: 0.035
+    robot2_xy: 0.01
+    robot2_yaw: 0.035
+
+    t_xy: 0.015
+    push_t_yaw: 0.052
+
+    t_site_xy_error: 0.0   # set to 0 if derived from noisy t pose
+    t_vel_estimate: 0.05
+
+latency:
+  action_latency:
+    enabled: false
+    action_history_size: 16
+    action_delay_mean: 1.0
+    action_delay_std: 0.5
+  observation_latency:
+    enabled: false
+    obs_history_size: 16
+    obs_delay_mean: 1.0
+    obs_delay_std: 0.5
+
+training:
+  num_timesteps: 200000000
+  num_evals: 5
+  reward_scaling: 1.0
+  normalize_observations: true
+  action_repeat: 1
+  unroll_length: 20
+  num_minibatches: 32
+  num_updates_per_batch: 4
+  discounting: 0.97
+  learning_rate: 0.0003
+  entropy_cost: 0.01
+  num_envs: 8192
+  batch_size: 256
+  max_grad_norm: 1.0
+  clipping_epsilon: 0.2
+  num_eval_envs: 128
+
+network:
+  actor_hidden_dims: [256, 128]
+  critic_hidden_dims: [512, 256, 128]
+  policy_obs_key: state
+  value_obs_key: privileged_state
