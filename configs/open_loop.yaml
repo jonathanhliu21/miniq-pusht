@@ -16,8 +16,8 @@ latency:
   action_latency:
     enabled: false
     action_history_size: 16
-    action_delay_mean: 1.0
-    action_delay_std: 0.5
+    action_delay_mean: 3.0
+    action_delay_std: 3.0
   observation_latency:
     enabled: false
     obs_history_size: 16

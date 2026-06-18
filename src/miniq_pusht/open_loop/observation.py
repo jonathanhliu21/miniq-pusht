@@ -107,6 +107,8 @@ class Observation:
                 self.contact_summary(data, self._spec.miniq1.geom_ids, self._spec.push_t_geom_ids),
                 self.contact_summary(data, self._spec.miniq2.geom_ids, self._spec.push_t_geom_ids),
                 self.contact_summary(data, self._spec.miniq1.geom_ids, self._spec.miniq2.geom_ids),
+                info["action_delay"].astype(jp.float32)[None],
+                info["obs_delay"].astype(jp.float32)[None],
             ]
         )
         return {"state": state, "privileged_state": privileged_state}

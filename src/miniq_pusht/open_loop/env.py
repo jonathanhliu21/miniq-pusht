@@ -163,6 +163,21 @@ class Env(mjx_env.MjxEnv):
         self._gait1 = GaitGenerator(self._spec.miniq1.default_pose, self._spec.miniq1.ctrlrange)
         self._gait2 = GaitGenerator(self._spec.miniq2.default_pose, self._spec.miniq2.ctrlrange)
 
+        # Latency config
+        latency_cfg = self._config.get("latency", {})
+        action_lat = latency_cfg.get("action_latency", {})
+        obs_lat = latency_cfg.get("observation_latency", {})
+
+        self._action_latency_enabled = bool(action_lat.get("enabled", False))
+        self._action_history_size = int(action_lat.get("action_history_size", 16))
+        self._action_delay_mean = float(action_lat.get("action_delay_mean", 3.0))
+        self._action_delay_std = float(action_lat.get("action_delay_std", 3.0))
+
+        self._obs_latency_enabled = bool(obs_lat.get("enabled", False))
+        self._obs_history_size = int(obs_lat.get("obs_history_size", 16))
+        self._obs_delay_mean = float(obs_lat.get("obs_delay_mean", 1.0))
+        self._obs_delay_std = float(obs_lat.get("obs_delay_std", 0.5))
+
     def domain_randomize(
         self,
         model: mjx.Model,
@@ -241,6 +256,10 @@ class Env(mjx_env.MjxEnv):
         }
         obs = self._obs_builder.get_obs(data, info)
 
+        # latency buffers
+        info["action_buffer"] = jp.zeros((self._action_history_size, self.action_size))
+        info["obs_state_buffer"] = jp.tile(obs["state"][None], (self._obs_history_size, 1))
+
         # build metrics
         metrics = {}
         reward, done = jp.zeros(()), jp.zeros(())
@@ -250,6 +269,41 @@ class Env(mjx_env.MjxEnv):
         action = jp.asarray(action).reshape((self.action_size,))
         action_scale = self._config.get("action_scale", 1.0)
         scaled_action = jp.clip(action * action_scale, -1.0, 1.0)
+
+        info = dict(state.info)
+
+        # apply action latency
+        action_buffer = state.info["action_buffer"]
+        new_action_buffer = jp.concatenate(
+            [scaled_action[None], action_buffer[:-1]], axis=0
+        )
+        if self._action_latency_enabled:
+            info["rng"], delay_rng = jax.random.split(info["rng"])
+            raw_delay = (
+                self._action_delay_mean
+                + self._action_delay_std * jax.random.normal(delay_rng)
+            )
+            action_delay = jp.clip(
+                jp.round(raw_delay).astype(jp.int32), 0, self._action_history_size - 1
+            )
+            effective_action = jax.lax.dynamic_slice_in_dim(
+                new_action_buffer, action_delay, 1, axis=0
+            )[0]
+        else:
+            action_delay = jp.array(0, dtype=jp.int32)
+            effective_action = scaled_action
+        
+        if self._obs_latency_enabled:
+            info["rng"], obs_delay_rng = jax.random.split(info["rng"])
+            raw_delay = (
+                self._obs_delay_mean
+                + self._obs_delay_std * jax.random.normal(obs_delay_rng)
+            )
+            obs_delay = jp.clip(
+                jp.round(raw_delay).astype(jp.int32), 0, self._obs_history_size - 1
+            )
+        else:
+            obs_delay = jp.array(0, dtype=jp.int32)
 
         prev_t_xy = self._obs_builder.t_xy(state.data)
         prev_t_yaw = self._obs_builder.t_yaw(state.data)
@@ -264,10 +318,10 @@ class Env(mjx_env.MjxEnv):
             data, phase = carry
             gait_params = state.info["gait_params"]
             phase1, ctrl1 = self._gait1.step_randomized(
-                phase[0], scaled_action[:2], gait_params[0]
+                phase[0], effective_action[:2], gait_params[0]
             )
             phase2, ctrl2 = self._gait2.step_randomized(
-                phase[1], scaled_action[2:], gait_params[1]
+                phase[1], effective_action[2:], gait_params[1]
             )
             phase = jp.array([phase1, phase2])
             ctrl = jp.concatenate([ctrl1, ctrl2])
@@ -292,26 +346,40 @@ class Env(mjx_env.MjxEnv):
             ]
         )
 
-        info = dict(state.info)
         info.update(
             {
-                "last_action": scaled_action,
-                "last_act": scaled_action,
+                "last_action": effective_action,
+                "last_act": effective_action,
                 "gait_phase": phase,
                 "gait_frequency": jp.array(
                     [
                         self._gait1.frequency_with_scale(
-                            scaled_action[:2], state.info["gait_params"][0, 4]
+                            effective_action[:2], state.info["gait_params"][0, 4]
                         ),
                         self._gait2.frequency_with_scale(
-                            scaled_action[2:], state.info["gait_params"][1, 4]
+                            effective_action[2:], state.info["gait_params"][1, 4]
                         ),
                     ]
                 ),
                 "t_vel_estimate": t_vel_estimate,
+                "action_buffer": new_action_buffer,
+                "action_delay": action_delay,
+                "obs_delay": obs_delay
             }
         )
         obs = self._obs_builder.get_obs(data, info)
+
+        # observation latency
+        obs_state_buffer = state.info["obs_state_buffer"]
+        new_obs_state_buffer = jp.concatenate(
+            [obs["state"][None], obs_state_buffer[:-1]], axis=0
+        )
+        if self._obs_latency_enabled:
+            delayed_state = jax.lax.dynamic_slice_in_dim(
+                new_obs_state_buffer, obs_delay, 1, axis=0
+            )[0]
+            obs = {**obs, "state": delayed_state}
+        info["obs_state_buffer"] = new_obs_state_buffer
 
         reward, done = jp.zeros(()), jp.zeros(())
         return mjx_env.State(data, obs, reward, done, state.metrics, info)
