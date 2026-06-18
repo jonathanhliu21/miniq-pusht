@@ -12,6 +12,22 @@ noise_config:
     t_site_xy_error: 0.0   # set to 0 if derived from noisy t pose
     t_vel_estimate: 0.05
 
+termination:
+  success_site_error_m: 0.01         # all 3 T-site xy errors must be below this (m)
+  success_consecutive_steps: 5       # how many consecutive policy steps to hold success
+
+  min_base_height_m: 0.02            # robot base z below this → fallen
+  min_upvector_z: 0.5                # robot upvector z below this → fallen (≈60 ° tilt)
+
+  robot_robot_force_n: 20.0          # inter-robot normal force limit (N); above → terminate
+  robot_robot_contact_steps: 10      # sustained contact steps (1 s at 10 Hz) → terminate
+
+  robot_on_t_height_m: 0.06          # robot base z above this → climbing on T
+
+  arena_half_width_m: 0.8            # |xy| beyond this for any robot or T → out of bounds
+
+  t_tilt_cos_min: 0.5                # T up-vector z below this (≈60 °) → invalid T pose
+
 latency:
   action_latency:
     enabled: false

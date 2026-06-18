@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+
 def _patch_warp_mjx_compat() -> None:
     """Backfills Warp APIs the bundled mujoco_warp expects.
 
@@ -70,6 +71,7 @@ from miniq_pusht.randomize import (
     randomize_reset,
 )
 
+
 def append_yaml_to_config(
     file_name: str, config: config_dict.ConfigDict
 ) -> config_dict.ConfigDict:
@@ -97,6 +99,7 @@ def append_yaml_to_config(
 
     return config
 
+
 class Env(mjx_env.MjxEnv):
     """Environment setup with open loop locomotion control"""
 
@@ -120,11 +123,11 @@ class Env(mjx_env.MjxEnv):
 
         # per-class gains
         kp_by_class = {
-            "hip":  self._config.Kp_hip,
+            "hip": self._config.Kp_hip,
             "knee": self._config.Kp_knee,
         }
         kd_by_class = {
-            "hip":  self._config.Kd_hip,
+            "hip": self._config.Kd_hip,
             "knee": self._config.Kd_knee,
         }
 
@@ -161,8 +164,12 @@ class Env(mjx_env.MjxEnv):
         # put model onto mjx
         self._mjx_model = mjx.put_model(self._mj_model, impl=self._config.impl)
         self._obs_builder = Observation(self._spec, self._config)
-        self._gait1 = GaitGenerator(self._spec.miniq1.default_pose, self._spec.miniq1.ctrlrange)
-        self._gait2 = GaitGenerator(self._spec.miniq2.default_pose, self._spec.miniq2.ctrlrange)
+        self._gait1 = GaitGenerator(
+            self._spec.miniq1.default_pose, self._spec.miniq1.ctrlrange
+        )
+        self._gait2 = GaitGenerator(
+            self._spec.miniq2.default_pose, self._spec.miniq2.ctrlrange
+        )
 
         # Latency config
         latency_cfg = self._config.get("latency", {})
@@ -229,7 +236,9 @@ class Env(mjx_env.MjxEnv):
         starts_enabled = randomization_cfg.get("starts", {}).get("enable", True)
         gait_enabled = randomization_cfg.get("gait", {}).get("enable", True)
         if randomization_enabled and starts_enabled:
-            qpos, qvel = randomize_reset(qpos, qvel, reset_rng, self._config, self._spec)
+            qpos, qvel = randomize_reset(
+                qpos, qvel, reset_rng, self._config, self._spec
+            )
 
         # put data onto model
         data = mjx.make_data(
@@ -268,7 +277,14 @@ class Env(mjx_env.MjxEnv):
 
         # latency buffers
         info["action_buffer"] = jp.zeros((self._action_history_size, self.action_size))
-        info["obs_state_buffer"] = jp.tile(obs["state"][None], (self._obs_history_size, 1))
+        info["obs_state_buffer"] = jp.tile(
+            obs["state"][None], (self._obs_history_size, 1)
+        )
+
+        # termination counters
+        info["success_counter"] = jp.zeros((), dtype=jp.int32)
+        info["robot_robot_contact_steps"] = jp.zeros((), dtype=jp.int32)
+        info["step_count"] = jp.zeros((), dtype=jp.int32)
 
         # build metrics
         metrics = {}
@@ -302,12 +318,11 @@ class Env(mjx_env.MjxEnv):
         else:
             action_delay = jp.array(0, dtype=jp.int32)
             effective_action = scaled_action
-        
+
         if self._obs_latency_enabled:
             info["rng"], obs_delay_rng = jax.random.split(info["rng"])
-            raw_delay = (
-                self._obs_delay_mean
-                + self._obs_delay_std * jax.random.normal(obs_delay_rng)
+            raw_delay = self._obs_delay_mean + self._obs_delay_std * jax.random.normal(
+                obs_delay_rng
             )
             obs_delay = jp.clip(
                 jp.round(raw_delay).astype(jp.int32), 0, self._obs_history_size - 1
@@ -374,7 +389,8 @@ class Env(mjx_env.MjxEnv):
                 "t_vel_estimate": t_vel_estimate,
                 "action_buffer": new_action_buffer,
                 "action_delay": action_delay,
-                "obs_delay": obs_delay
+                "obs_delay": obs_delay,
+                "step_count": state.info["step_count"] + 1,
             }
         )
         obs = self._obs_builder.get_obs(data, info)
@@ -391,5 +407,81 @@ class Env(mjx_env.MjxEnv):
             obs = {**obs, "state": delayed_state}
         info["obs_state_buffer"] = new_obs_state_buffer
 
-        reward, done = jp.zeros(()), jp.zeros(())
+        done = self._get_termination(data, info)
+        reward = jp.zeros(())
         return mjx_env.State(data, obs, reward, done, state.metrics, info)
+
+    # ------------------------------------------------------------------
+    # Termination helpers
+    # ------------------------------------------------------------------
+
+    def _check_success(self, data: mjx.Data, info: dict) -> jax.Array:
+        site_err = self._obs_builder.t_site_error(data)  # (3, 3)
+        xy_err = jp.linalg.norm(site_err[:, :2], axis=1)  # (3,)
+        all_close = jp.all(xy_err < self._config.termination.success_site_error_m)
+        new_count = jp.where(
+            all_close, info["success_counter"] + 1, jp.zeros((), jp.int32)
+        )
+        info["success_counter"] = new_count
+        return new_count >= self._config.termination.success_consecutive_steps
+
+    def _check_robot_fallen(self, data: mjx.Data) -> jax.Array:
+        min_h = self._config.termination.min_base_height_m
+        min_up = self._config.termination.min_upvector_z
+
+        def fallen(robot) -> jax.Array:
+            base_z = data.qpos[robot.base_qposadr][2]
+            up_z = data.sensordata[robot.upvector_adr][2]
+            return (base_z < min_h) | (up_z < min_up)
+
+        return fallen(self._spec.miniq1) | fallen(self._spec.miniq2)
+
+    def _check_robot_robot_collision(self, data: mjx.Data, info: dict) -> jax.Array:
+        summary = self._obs_builder.contact_summary(
+            data, self._spec.miniq1.geom_ids, self._spec.miniq2.geom_ids
+        )
+        in_contact = summary[0] > 0.5
+        new_steps = jp.where(
+            in_contact,
+            info["robot_robot_contact_steps"] + 1,
+            jp.zeros((), jp.int32),
+        )
+        info["robot_robot_contact_steps"] = new_steps
+        return (summary[1] > self._config.termination.robot_robot_force_n) | (
+            new_steps >= self._config.termination.robot_robot_contact_steps
+        )
+
+    def _check_robot_on_t(self, data: mjx.Data) -> jax.Array:
+        threshold = self._config.termination.robot_on_t_height_m
+        z1 = data.qpos[self._spec.miniq1.base_qposadr][2]
+        z2 = data.qpos[self._spec.miniq2.base_qposadr][2]
+        return (z1 > threshold) | (z2 > threshold)
+
+    def _check_out_of_bounds(self, data: mjx.Data) -> jax.Array:
+        half_w = self._config.termination.arena_half_width_m
+
+        def oob(xy: jax.Array) -> jax.Array:
+            return jp.any(jp.abs(xy) > half_w)
+
+        r1_xy = data.qpos[self._spec.miniq1.base_qposadr[:2]]
+        r2_xy = data.qpos[self._spec.miniq2.base_qposadr[:2]]
+        t_xy = data.qpos[self._spec.push_t_qposadr[:2]]
+        return oob(r1_xy) | oob(r2_xy) | oob(t_xy)
+
+    def _check_t_tilt(self, data: mjx.Data) -> jax.Array:
+        # qpos order: x y z qw qx qy qz  →  up-vector z = 1 - 2(qx²+qy²)
+        t_q = data.qpos[self._spec.push_t_qposadr]
+        up_z = 1.0 - 2.0 * (t_q[4] * t_q[4] + t_q[5] * t_q[5])
+        return up_z < self._config.termination.t_tilt_cos_min
+
+    def _get_termination(self, data: mjx.Data, info: dict) -> jax.Array:
+        term = (
+            self._check_success(data, info)
+            | self._check_robot_fallen(data)
+            | self._check_robot_robot_collision(data, info)
+            | self._check_robot_on_t(data)
+            | self._check_out_of_bounds(data)
+            | self._check_t_tilt(data)
+            | (info["step_count"] >= self._config.episode_length)
+        )
+        return term.astype(jp.float32)
