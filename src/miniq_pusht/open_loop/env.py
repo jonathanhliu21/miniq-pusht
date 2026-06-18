@@ -154,11 +154,12 @@ class Env(mjx_env.MjxEnv):
         self._mj_model.vis.global_.offwidth = 1280
         self._mj_model.vis.global_.offheight = 720
 
-        # put model onto mjx
-        self._mjx_model = mjx.put_model(self._mj_model, impl=self._config.impl)
-
         # static model-derived constants (IDs, default pose, sensor addresses, ...)
         self._spec = ModelSpec.from_mj_model(self._mj_model, self._config)
+        self._setup_inter_robot_collisions()
+
+        # put model onto mjx
+        self._mjx_model = mjx.put_model(self._mj_model, impl=self._config.impl)
         self._obs_builder = Observation(self._spec, self._config)
         self._gait1 = GaitGenerator(self._spec.miniq1.default_pose, self._spec.miniq1.ctrlrange)
         self._gait2 = GaitGenerator(self._spec.miniq2.default_pose, self._spec.miniq2.ctrlrange)
@@ -177,6 +178,15 @@ class Env(mjx_env.MjxEnv):
         self._obs_history_size = int(obs_lat.get("obs_history_size", 16))
         self._obs_delay_mean = float(obs_lat.get("obs_delay_mean", 1.0))
         self._obs_delay_std = float(obs_lat.get("obs_delay_std", 0.5))
+
+    def _setup_inter_robot_collisions(self) -> None:
+        # make sure robot1 and robot2 collide with each other but r1 and r1 don't
+        for gid in self._spec.miniq1.geom_ids:
+            self._mj_model.geom_contype[int(gid)] = 2
+            self._mj_model.geom_conaffinity[int(gid)] = 5
+        for gid in self._spec.miniq2.geom_ids:
+            self._mj_model.geom_contype[int(gid)] = 4
+            self._mj_model.geom_conaffinity[int(gid)] = 3
 
     def domain_randomize(
         self,
