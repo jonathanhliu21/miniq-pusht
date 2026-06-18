@@ -7,7 +7,7 @@ noise_config:
     robot2_yaw: 0.035
 
     t_xy: 0.015
-    push_t_yaw: 0.052
+    t_yaw: 0.052
 
     t_site_xy_error: 0.0   # set to 0 if derived from noisy t pose
     t_vel_estimate: 0.05

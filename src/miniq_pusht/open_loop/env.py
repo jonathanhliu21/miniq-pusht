@@ -261,6 +261,8 @@ class Env(mjx_env.MjxEnv):
             "last_action": jp.zeros(4),
             "last_act": jp.zeros(4),
             "gait_phase": jp.zeros(2),
+            "action_delay": jp.zeros((), dtype=jp.int32),
+            "obs_delay": jp.zeros((), dtype=jp.int32),
             "gait_params": (
                 randomize_gait_params(gait_rng, self._config)
                 if randomization_enabled and gait_enabled

@@ -30,7 +30,7 @@ class Observation:
         robot2_xy = self.robot_xy(data, self._spec.miniq2)
         robot2_xy_noisy = self._add_noise(info, robot2_xy, self._config.noise_config.scales.robot2_xy) 
         robot2_yaw = self.robot_yaw(data, self._spec.miniq2)
-        robot2_yaw_noisy = self._add_noise(info, robot2_xy, self._config.noise_config.scales.robot2_yaw) 
+        robot2_yaw_noisy = self._add_noise(info, robot2_yaw, self._config.noise_config.scales.robot2_yaw)
 
         t_xy = self.t_xy(data)
         t_xy_noisy = self._add_noise(info, t_xy, self._config.noise_config.scales.t_xy)
@@ -53,7 +53,7 @@ class Observation:
         r2_rel_yaw_noisy = robot2_yaw_noisy - t_yaw_noisy
         t_rel_target_xy_noisy = t_xy_noisy - self.target_xy(data)
         t_yaw_error_noisy = t_yaw_noisy - self.target_yaw(data)
-        t_vel_estimate_noisy = self._add_noise(info, t_vel_estimate, self._config.scales.t_vel_estimate)
+        t_vel_estimate_noisy = self._add_noise(info, t_vel_estimate, self._config.noise_config.scales.t_vel_estimate)
 
         state = jp.hstack([
                 r1_rel_xy_noisy,
@@ -215,22 +215,27 @@ class Observation:
 
     @property
     def observation_size(self) -> dict[str, int]:
-        state_size = 22
+        # state: r1_xy(2) r2_xy(2) r1_sc(2) r2_sc(2) t_xy(2) t_yaw_sc(2) t_vel(3) action(4)
+        state_size = 19
+        # unnoisy_state: r1_xy(2) r2_xy(2) r1_sc(2) r2_sc(2) t_xy(2) t_yaw_sc(2) t_site_err(3) t_vel(3)
+        unnoisy_state_size = 18
         robot_body_force_size = (
             self._spec.miniq1.body_ids.size + self._spec.miniq2.body_ids.size
         ) * 6
         privileged_state_size = (
             state_size
-            + 7  # true T qpos
-            + 3  # true T linear velocity
-            + 3  # true T angular velocity
-            + 9  # T endpoint/site error
-            + 2 * (7 + 3 + 3)  # robot base pose, linear velocity, angular velocity
-            + 2 * (8 + 8)  # robot joint qpos and qvel
-            + 2 * (3 + 3)  # gravity and upvector
-            + 16  # actuator forces
+            + unnoisy_state_size
+            + 7   # T qpos
+            + 3   # T linear vel
+            + 3   # T angular vel
+            + 9   # T site error (3 sites × 3 coords)
+            + 2 * (7 + 3 + 3)  # robot base pose, linvel, angvel
+            + 2 * (8 + 8)      # robot joint qpos, qvel
+            + 2 * (3 + 3)      # gravity, upvector
+            + 16               # actuator forces
             + robot_body_force_size
-            + 3 * 2  # three contact summaries: flag + force
+            + 3 * 2            # 3 contact summaries (flag + force each)
+            + 2                # action_delay, obs_delay
         )
         return {
             "state": state_size,
