@@ -65,6 +65,7 @@ import yaml
 from miniq_pusht.model_spec import ModelSpec
 from miniq_pusht.open_loop.observation import Observation
 from miniq_pusht.open_loop.open_loop import GaitGenerator
+from miniq_pusht.open_loop.reward import Reward
 from miniq_pusht.randomize import (
     domain_randomize as randomize_model,
     randomize_gait_params,
@@ -164,6 +165,7 @@ class Env(mjx_env.MjxEnv):
         # put model onto mjx
         self._mjx_model = mjx.put_model(self._mj_model, impl=self._config.impl)
         self._obs_builder = Observation(self._spec, self._config)
+        self._reward = Reward(self._config, self._obs_builder, self._spec)
         self._gait1 = GaitGenerator(
             self._spec.miniq1.default_pose, self._spec.miniq1.ctrlrange
         )
@@ -285,6 +287,23 @@ class Env(mjx_env.MjxEnv):
         info["success_counter"] = jp.zeros((), dtype=jp.int32)
         info["robot_robot_contact_steps"] = jp.zeros((), dtype=jp.int32)
         info["step_count"] = jp.zeros((), dtype=jp.int32)
+        info["is_success"] = jp.zeros((), dtype=jp.bool_)
+
+        # assign robot 2 to whichever push site is closer at episode start
+        r2_xy = self._obs_builder.robot_xy(data, self._spec.miniq2)
+        push_l_xy = data.sensordata[self._spec.push_t_r2_push_site_adr_l][:2]
+        push_r_xy = data.sensordata[self._spec.push_t_r2_push_site_adr_r][:2]
+        d_l = jp.linalg.norm(r2_xy - push_l_xy)
+        d_r = jp.linalg.norm(r2_xy - push_r_xy)
+        info["r2_push_site_adr"] = jp.where(
+            d_l <= d_r,
+            self._spec.push_t_r2_push_site_adr_l,
+            self._spec.push_t_r2_push_site_adr_r,
+        )
+
+        # reward bookkeeping: previous-step values for progress/useful-push rewards
+        info["prev_site_error"] = self._reward.site_mean_error(data)
+        info["prev_abs_yaw_error"] = self._reward.abs_yaw_error(data)
 
         # build metrics
         metrics = {}
@@ -407,8 +426,14 @@ class Env(mjx_env.MjxEnv):
             obs = {**obs, "state": delayed_state}
         info["obs_state_buffer"] = new_obs_state_buffer
 
-        done = self._get_termination(data, info)
-        reward = jp.zeros(())
+        done = self._get_termination(data, info)  # also sets info["is_success"]
+        components = self._reward.get_reward_components(data, effective_action, info, done)
+        reward = self._reward.get_reward_value(components, self.dt)
+
+        # update prev_ values for the next step's progress/useful-push rewards
+        info["prev_site_error"] = self._reward.site_mean_error(data)
+        info["prev_abs_yaw_error"] = self._reward.abs_yaw_error(data)
+
         return mjx_env.State(data, obs, reward, done, state.metrics, info)
 
     # ------------------------------------------------------------------
@@ -423,7 +448,9 @@ class Env(mjx_env.MjxEnv):
             all_close, info["success_counter"] + 1, jp.zeros((), jp.int32)
         )
         info["success_counter"] = new_count
-        return new_count >= self._config.termination.success_consecutive_steps
+        is_success = new_count >= self._config.termination.success_consecutive_steps
+        info["is_success"] = is_success
+        return is_success
 
     def _check_robot_fallen(self, data: mjx.Data) -> jax.Array:
         min_h = self._config.termination.min_base_height_m

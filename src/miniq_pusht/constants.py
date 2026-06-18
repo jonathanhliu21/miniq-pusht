@@ -7,6 +7,9 @@ GAIT_FREQUENCY_HZ = 50.0
 
 PUSH_T_FREEJOINT = "push_t_freejoint"
 PUSH_T_SITES = ("push_t_bar_l", "push_t_bar_r", "push_t_stem")
+PUSH_T_R1_PUSH_SENSOR = "push_t_r1_push_pos"
+PUSH_T_R2_PUSH_SENSOR_L = "push_t_r2_push_pos_l"
+PUSH_T_R2_PUSH_SENSOR_R = "push_t_r2_push_pos_r"
 TARGET_PUSH_T_SITES = (
     "target_push_t_bar_l",
     "target_push_t_bar_r",

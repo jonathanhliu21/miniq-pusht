@@ -133,7 +133,7 @@ class Observation:
         return data.qpos[self._spec.push_t_qposadr]
 
     def t_xy(self, data: mjx.Data) -> jax.Array:
-        return self.t_qpos(data)[:2]
+        return jp.mean(self.t_sites(data)[:, :2], axis=0)
 
     def t_yaw(self, data: mjx.Data) -> jax.Array:
         return self.yaw_from_quat(self.t_qpos(data)[3:7])

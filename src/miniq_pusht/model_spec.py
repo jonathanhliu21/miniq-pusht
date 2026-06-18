@@ -16,6 +16,9 @@ from .constants import (
     LOCAL_LINVEL_SENSOR,
     POSITION_SENSOR,
     PUSH_T_FREEJOINT,
+    PUSH_T_R1_PUSH_SENSOR,
+    PUSH_T_R2_PUSH_SENSOR_L,
+    PUSH_T_R2_PUSH_SENSOR_R,
     PUSH_T_SITES,
     ROBOT_1_PREFIX,
     ROBOT_2_PREFIX,
@@ -205,6 +208,9 @@ class ModelSpec:
     push_t_geom_ids: jax.Array
     floor_geom_id: int
     t_floor_pair_ids: jax.Array
+    push_t_r1_push_site_adr: jax.Array    # (3,) sensor indices for r1 push site xyz
+    push_t_r2_push_site_adr_l: jax.Array  # (3,) sensor indices for r2 left push site xyz
+    push_t_r2_push_site_adr_r: jax.Array  # (3,) sensor indices for r2 right push site xyz
 
     @classmethod
     def from_mj_model(
@@ -276,4 +282,7 @@ class ModelSpec:
             push_t_geom_ids=push_t_geom_ids,
             floor_geom_id=floor_geom_id,
             t_floor_pair_ids=pair_ids({floor_geom_id}, t_geom_id_set),
+            push_t_r1_push_site_adr=jp.array(sensor_adr(PUSH_T_R1_PUSH_SENSOR)),
+            push_t_r2_push_site_adr_l=jp.array(sensor_adr(PUSH_T_R2_PUSH_SENSOR_L)),
+            push_t_r2_push_site_adr_r=jp.array(sensor_adr(PUSH_T_R2_PUSH_SENSOR_R)),
         )
