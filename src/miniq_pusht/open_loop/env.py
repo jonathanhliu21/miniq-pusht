@@ -308,8 +308,18 @@ class Env(mjx_env.MjxEnv):
         info["prev_site_error"] = self._reward.site_mean_error(data)
         info["prev_abs_yaw_error"] = self._reward.abs_yaw_error(data)
 
-        # build metrics
-        metrics = {}
+        # build metrics — zero-initialised so step() can fill them with the same pytree shape
+        metrics = {
+            "reward/endpoint_error": jp.zeros(()),
+            "reward/progress":       jp.zeros(()),
+            "reward/useful_push":    jp.zeros(()),
+            "reward/r1_push_site":   jp.zeros(()),
+            "reward/r2_push_site":   jp.zeros(()),
+            "reward/action_rate":    jp.zeros(()),
+            "reward/action_penalty": jp.zeros(()),
+            "reward/success":        jp.zeros(()),
+            "reward/total":          jp.zeros(()),
+        }
         reward, done = jp.zeros(()), jp.zeros(())
         return mjx_env.State(data, obs, reward, done, metrics, info)
 
@@ -437,7 +447,9 @@ class Env(mjx_env.MjxEnv):
         info["prev_site_error"] = self._reward.site_mean_error(data)
         info["prev_abs_yaw_error"] = self._reward.abs_yaw_error(data)
 
-        return mjx_env.State(data, obs, reward, done, state.metrics, info)
+        metrics = {f"reward/{k}": v for k, v in components.items()}
+        metrics["reward/total"] = reward
+        return mjx_env.State(data, obs, reward, done, metrics, info)
 
     # ------------------------------------------------------------------
     # Termination helpers
