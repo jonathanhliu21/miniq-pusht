@@ -111,12 +111,6 @@ class Env(mjx_env.MjxEnv):
     ):
         super().__init__(config, config_overrides)
 
-        # set up appended config
-        extra_configs = self._config.env.extra_configs
-        self._config.unlock()
-        self._config = append_yaml_to_config(extra_configs, self._config)
-        self._config.lock()
-
         # set up simulator
         self._xml_path = str(Path(self._config.mjcf.path))
         self._episode_length = self._config.episode_length
