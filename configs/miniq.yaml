@@ -22,4 +22,4 @@ target_base_height: 0.0356
 soft_joint_pos_limit_factor: 0.95
 impl: warp
 naconmax: 131072 # contacts_per_env * num_envs
-njmax: 150
+njmax: 500
