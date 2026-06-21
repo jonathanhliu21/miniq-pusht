@@ -181,9 +181,18 @@ def main():
     ckpt_dir = logdir / "checkpoints"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
-    shutil.copy(args.config, logdir / "config.yaml")
+    config_dir = logdir / "config"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy(args.config, config_dir / Path(args.config).name)
+    extra_cfg_str = cfg.get("env", {}).get("extra_configs", "")
+    if extra_cfg_str:
+        extra_path = Path(extra_cfg_str)
+        if not extra_path.is_absolute():
+            extra_path = Path(args.config).parent / extra_path
+        if extra_path.exists():
+            shutil.copy(str(extra_path), config_dir / extra_path.name)
     if args.rewards is not None:
-        shutil.copy(args.rewards, logdir / "rewards.yaml")
+        shutil.copy(args.rewards, config_dir / Path(args.rewards).name)
     if init_params_src is not None:
         (logdir / "init_from.txt").write_text(init_params_src + "\n")
 

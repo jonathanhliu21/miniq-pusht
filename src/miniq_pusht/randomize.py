@@ -488,6 +488,24 @@ def randomize_reset(
     correction = 0.5 * jp.maximum(min_dist - dist, 0.0) * direction
     r1_xy = r1_xy - correction
     r2_xy = r2_xy + correction
+
+    # Enforce minimum robot-to-T distance: the T may have jittered into a
+    # robot's home region, so push each robot away from the T if needed.
+    t_pos = qpos[spec.push_t_qposadr[:2]]
+    min_robot_t_dist = float(_value(start_cfg, "min_robot_t_distance", 0.27))
+
+    r1_pos = qpos[spec.miniq1.base_qposadr[:2]] + r1_xy
+    delta_r1_t = r1_pos - t_pos
+    dist_r1_t = jp.linalg.norm(delta_r1_t)
+    dir_r1_t = delta_r1_t / jp.maximum(dist_r1_t, 1e-6)
+    r1_xy = r1_xy + jp.maximum(min_robot_t_dist - dist_r1_t, 0.0) * dir_r1_t
+
+    r2_pos = qpos[spec.miniq2.base_qposadr[:2]] + r2_xy
+    delta_r2_t = r2_pos - t_pos
+    dist_r2_t = jp.linalg.norm(delta_r2_t)
+    dir_r2_t = delta_r2_t / jp.maximum(dist_r2_t, 1e-6)
+    r2_xy = r2_xy + jp.maximum(min_robot_t_dist - dist_r2_t, 0.0) * dir_r2_t
+
     r1_yaw = _uniform(r1_yaw_key, _value(start_cfg, "robot_yaw", (-math.pi / 6, math.pi / 6)))
     r2_yaw = _uniform(r2_yaw_key, _value(start_cfg, "robot_yaw", (-math.pi / 6, math.pi / 6)))
     qpos = set_free_pose(qpos, spec.miniq1.base_qposadr, r1_xy, r1_yaw)

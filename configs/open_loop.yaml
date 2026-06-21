@@ -63,6 +63,8 @@ domain_randomization:
     initial_qpos_noise: [-0.05, 0.05]         # +U  (per-reset actuated joint qpos noise, radians)
     initial_qvel_noise: [-0.02, 0.02]         # +U  (per-reset full qvel noise, m/s and rad/s)
     min_robot_start_distance: 0.16            # scalar  minimum robot base xy separation after jitter, meters
+    min_robot_t_distance: 0.27               # scalar  minimum robot base xy distance from T freejoint after jitter, meters
+                                             # must exceed T bounding radius (~0.145m) + robot half-footprint (~0.075m)
 
 reward_config:
   only_positive_rewards: false
@@ -107,8 +109,8 @@ latency:
     obs_delay_std: 0.5
 
 training:
-  num_timesteps: 200000000
-  num_evals: 5
+  num_timesteps: 500000
+  num_evals: 2
   reward_scaling: 1.0
   normalize_observations: true
   action_repeat: 1
