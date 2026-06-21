@@ -1,21 +1,21 @@
 from __future__ import annotations
 
+import argparse
 from datetime import datetime
 import os
 from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+os.environ.setdefault("MUJOCO_GL", "egl")
 os.environ.setdefault("MPLCONFIGDIR", str(ROOT / "logs" / ".matplotlib"))
 
 import jax
 import jax.numpy as jp
-from ml_collections import config_dict
 import mediapy as media
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import yaml
 
 
 SRC = ROOT / "src"
@@ -23,6 +23,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from miniq_pusht.open_loop.env import Env
+from miniq_pusht.load_config import load_config
 
 
 PLOTLY_CONFIG = {
@@ -30,37 +31,6 @@ PLOTLY_CONFIG = {
     "scrollZoom": True,
     "responsive": True,
 }
-
-
-def load_config(path: Path) -> config_dict.ConfigDict:
-    with path.open("r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
-    config = config_dict.ConfigDict(cfg)
-
-    # JAX is the most portable backend for this local visualization script.
-    config.impl = "jax"
-    return config
-
-
-def command_at_time(t: float) -> jp.ndarray:
-    """Returns [v1, w1, v2, w2] for a 10 s rollout."""
-    max_forward = 0.8
-    turn_yaw = 0.55
-
-    # if t < 3.0:
-    #     forward = max_forward
-    #     yaw = 0
-    # elif t < 4.0:
-    #     forward = 0.0
-    #     yaw = 0.0
-    # elif t < 7.0:
-    #     forward = -max_forward
-    #     yaw = 0.0
-    # else:
-    #     forward = -max_forward
-    #     yaw = turn_yaw
-
-    return jp.array([-0.5, 0.0, -0.8, 0.0], dtype=jp.float32)
 
 
 def make_command_plot(env: Env, trajectory: list, times: np.ndarray) -> go.Figure:
@@ -209,7 +179,31 @@ def save_plot_report(env: Env, trajectory: list, times: np.ndarray, out_path: Pa
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--r1-command",
+        type=float,
+        nargs=2,
+        metavar=("FWD", "YAW"),
+        default=[0.5, 0.0],
+        help="Forward and yaw speed for robot 1 (default: 0.5 0.0)",
+    )
+    parser.add_argument(
+        "--r2-command",
+        type=float,
+        nargs=2,
+        metavar=("FWD", "YAW"),
+        default=[0.5, 0.0],
+        help="Forward and yaw speed for robot 2 (default: 0.5 0.0)",
+    )
+    args = parser.parse_args()
+    action = jp.array([*args.r1_command, *args.r2_command], dtype=jp.float32)
+
     config = load_config(ROOT / "configs" / "miniq.yaml")
+    config.impl = "jax"
+    # Disable start randomization: it places the T at a random position in the
+    # arena, where walking robots can step on the 3 cm-tall T and launch it.
+    config.domain_randomization.starts.enable = False
     env = Env(config)
 
     state = env.reset(jax.random.PRNGKey(config.env.seed))
@@ -220,7 +214,6 @@ def main() -> None:
     num_steps = int(round(rollout_seconds / env.dt))
 
     for step in range(num_steps):
-        action = command_at_time(step * env.dt)
         state = step_fn(state, action)
         jax.block_until_ready(state.data.qpos)
         trajectory.append(state)
