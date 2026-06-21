@@ -195,8 +195,25 @@ class Observation:
         geom_ids_a: jax.Array,
         geom_ids_b: jax.Array,
     ) -> jax.Array:
-        contact = data._impl.contact
-        geom = contact.geom
+        if hasattr(data._impl, "contact"):
+            # JAX backend: contact data is a nested Contact struct.
+            contact = data._impl.contact
+            geom = contact.geom          # (naconmax, 2)
+            dist = contact.dist          # (naconmax,)
+            efc_address = contact.efc_address  # (naconmax,)
+            efc_force = data._impl.efc_force   # (nefc,)
+            active_mask = (geom[:, 0] >= 0) & (geom[:, 1] >= 0)
+        else:
+            # Warp backend: contact fields are flat with double-underscore names.
+            geom = data._impl.contact__geom    # (naconmax, 2)
+            dist = data._impl.contact__dist    # (naconmax,)
+            raw_adr = data._impl.contact__efc_address  # (naconmax, dim) 2D in warp
+            efc_address = raw_adr[:, 0] if raw_adr.ndim == 2 else raw_adr
+            efc_force = data._impl.efc__force  # (njmax,)
+            # Inactive slots are not sentinel-marked; mask by nacon.
+            nacon = data._impl.nacon
+            active_mask = jp.arange(geom.shape[0]) < nacon
+
         geom1 = geom[:, 0]
         geom2 = geom[:, 1]
 
@@ -205,10 +222,12 @@ class Observation:
         geom2_in_a = (geom2[:, None] == geom_ids_a[None, :]).any(axis=1)
         geom2_in_b = (geom2[:, None] == geom_ids_b[None, :]).any(axis=1)
         pair_match = (geom1_in_a & geom2_in_b) | (geom1_in_b & geom2_in_a)
-        active = pair_match & (geom1 >= 0) & (geom2 >= 0) & (contact.dist <= 0.0)
+        active = pair_match & active_mask & (dist <= 0.0)
 
-        efc_address = jp.maximum(contact.efc_address, 0)
-        normal_force = jp.abs(data._impl.efc_force[efc_address])
+        efc_address_safe = jp.maximum(efc_address, 0)
+        # make sure force is not NaN
+        safe_efc_force = jp.nan_to_num(efc_force, nan=0.0, posinf=0.0, neginf=0.0)
+        normal_force = jp.abs(safe_efc_force[efc_address_safe])
         force_sum = jp.sum(jp.where(active, normal_force, 0.0))
         flag = jp.any(active).astype(jp.float32)
         return jp.array([flag, force_sum])

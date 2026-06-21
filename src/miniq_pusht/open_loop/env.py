@@ -319,6 +319,7 @@ class Env(mjx_env.MjxEnv):
             "reward/action_penalty": jp.zeros(()),
             "reward/success":        jp.zeros(()),
             "reward/total":          jp.zeros(()),
+            "reward":                jp.zeros(()),
         }
         reward, done = jp.zeros(()), jp.zeros(())
         return mjx_env.State(data, obs, reward, done, metrics, info)
@@ -440,15 +441,28 @@ class Env(mjx_env.MjxEnv):
         info["obs_state_buffer"] = new_obs_state_buffer
 
         done = self._get_termination(data, info)  # also sets info["is_success"]
+
+        # Guard prev_ values: AutoResetWrapper does not reset info, so stale NaN
+        # values from a diverged episode would poison the first step of the next one.
+        current_site_error = self._reward.site_mean_error(data)
+        current_abs_yaw_error = self._reward.abs_yaw_error(data)
+        info["prev_site_error"] = jp.where(
+            jp.isfinite(info["prev_site_error"]), info["prev_site_error"], current_site_error
+        )
+        info["prev_abs_yaw_error"] = jp.where(
+            jp.isfinite(info["prev_abs_yaw_error"]), info["prev_abs_yaw_error"], current_abs_yaw_error
+        )
+
         components = self._reward.get_reward_components(data, effective_action, info, done)
-        reward = self._reward.get_reward_value(components, self.dt)
+        reward = jp.nan_to_num(self._reward.get_reward_value(components, self.dt), nan=0.0)
 
         # update prev_ values for the next step's progress/useful-push rewards
-        info["prev_site_error"] = self._reward.site_mean_error(data)
-        info["prev_abs_yaw_error"] = self._reward.abs_yaw_error(data)
+        info["prev_site_error"] = current_site_error
+        info["prev_abs_yaw_error"] = current_abs_yaw_error
 
         metrics = {f"reward/{k}": v for k, v in components.items()}
         metrics["reward/total"] = reward
+        metrics["reward"] = reward
         return mjx_env.State(data, obs, reward, done, metrics, info)
 
     # ------------------------------------------------------------------
@@ -516,9 +530,13 @@ class Env(mjx_env.MjxEnv):
         up_z = 1.0 - 2.0 * (t_q[4] * t_q[4] + t_q[5] * t_q[5])
         return up_z < self._config.termination.t_tilt_cos_min
 
+    def _check_nan_state(self, data: mjx.Data) -> jax.Array:
+        return (~jp.isfinite(data.qpos).all() | ~jp.isfinite(data.qvel).all())
+
     def _get_termination(self, data: mjx.Data, info: dict) -> jax.Array:
         term = (
-            self._check_success(data, info)
+            self._check_nan_state(data)
+            | self._check_success(data, info)
             | self._check_robot_fallen(data)
             | self._check_robot_robot_collision(data, info)
             | self._check_robot_on_t(data)
